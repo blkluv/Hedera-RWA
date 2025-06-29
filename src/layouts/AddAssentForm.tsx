@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDropzone } from "react-dropzone";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
@@ -28,6 +28,7 @@ import {
   Star,
   CheckCircle,
 } from "lucide-react";
+import { Country, State, City } from "country-state-city";
 
 interface AssetForm {
   assetName: string;
@@ -55,6 +56,145 @@ interface AssetForm {
   insuranceDetails: string;
   specialRights: string;
 }
+
+const LocationSelector = ({
+  value,
+  onChange,
+}: {
+  value: { country: string; state: string; city: string };
+  onChange: (v: { country: string; state: string; city: string }) => void;
+}) => {
+  const { country, state, city } = value;
+  const [countries, setCountries] = useState<
+    { name: string; isoCode: string }[]
+  >([]);
+  const [states, setStates] = useState<{ name: string; isoCode: string }[]>([]);
+  const [cities, setCities] = useState<{ name: string }[]>([]);
+  const [countrySearch, setCountrySearch] = useState("");
+  const [stateSearch, setStateSearch] = useState("");
+  const [citySearch, setCitySearch] = useState("");
+
+  useEffect(() => {
+    setCountries(Country.getAllCountries());
+  }, []);
+
+  useEffect(() => {
+    if (country) {
+      setStates(State.getStatesOfCountry(country));
+    } else {
+      setStates([]);
+    }
+    setCities([]);
+    setStateSearch("");
+    setCitySearch("");
+  }, [country]);
+
+  useEffect(() => {
+    if (country && state) {
+      setCities(City.getCitiesOfState(country, state));
+    } else {
+      setCities([]);
+    }
+    setCitySearch("");
+  }, [country, state]);
+
+  const filteredCountries = countries.filter((c) =>
+    c.name.toLowerCase().includes(countrySearch.toLowerCase())
+  );
+  const filteredStates = states.filter((s) =>
+    s.name.toLowerCase().includes(stateSearch.toLowerCase())
+  );
+  const filteredCities = cities.filter((c) =>
+    c.name.toLowerCase().includes(citySearch.toLowerCase())
+  );
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+      <div>
+        <Label>Country *</Label>
+        <Select
+          value={country}
+          onValueChange={(v) => onChange({ country: v, state: "", city: "" })}
+        >
+          <SelectTrigger className="h-11">
+            <SelectValue placeholder="Select country" />
+          </SelectTrigger>
+          <SelectContent>
+            <div className="px-2 py-1">
+              <Input
+                placeholder="Type to filter country"
+                value={countrySearch}
+                onChange={(e) => setCountrySearch(e.target.value)}
+                className="mb-2"
+              />
+            </div>
+            {filteredCountries.map((c) => (
+              <SelectItem key={c.isoCode} value={c.isoCode}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>State *</Label>
+        <Select
+          value={state}
+          onValueChange={(v) => onChange({ country, state: v, city: "" })}
+          disabled={!country}
+        >
+          <SelectTrigger className="h-11">
+            <SelectValue placeholder="Select state" />
+          </SelectTrigger>
+          <SelectContent>
+            <div className="px-2 py-1">
+              <Input
+                placeholder="Type to filter state"
+                value={stateSearch}
+                onChange={(e) => setStateSearch(e.target.value)}
+                className="mb-2"
+                disabled={!country}
+              />
+            </div>
+            {filteredStates.map((s) => (
+              <SelectItem key={s.isoCode} value={s.isoCode}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>City *</Label>
+        <Select
+          value={city}
+          onValueChange={(v) => onChange({ country, state, city: v })}
+          disabled={!state}
+        >
+          <SelectTrigger className="h-11">
+            <SelectValue placeholder="Select city" />
+          </SelectTrigger>
+          <SelectContent>
+            <div className="px-2 py-1">
+              <Input
+                placeholder="Type to filter city"
+                value={citySearch}
+                onChange={(e) => setCitySearch(e.target.value)}
+                className="mb-2"
+                disabled={!state}
+              />
+            </div>
+            {filteredCities.map((c) => (
+              <SelectItem key={c.name} value={c.name}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+};
 
 const AddAssetForm = () => {
   const navigate = useNavigate();
@@ -84,17 +224,25 @@ const AddAssetForm = () => {
     insuranceDetails: "",
     specialRights: "",
   });
+  const [location, setLocation] = useState({
+    country: "",
+    state: "",
+    city: "",
+  });
   const [loading, setLoading] = useState(false);
+  const [descError, setDescError] = useState("");
+  const [priceError, setPriceError] = useState("");
 
   // Dropzone configurations
+  const imageAccept = { "image/png": [], "image/jpeg": [], "image/jpg": [] };
   const primaryImageDropzone = useDropzone({
-    accept: { "image/*": [] },
+    accept: imageAccept,
     multiple: false,
     onDrop: (files) => setForm((prev) => ({ ...prev, primaryImage: files[0] })),
   });
 
   const additionalImagesDropzone = useDropzone({
-    accept: { "image/*": [] },
+    accept: imageAccept,
     multiple: true,
     onDrop: (files) =>
       setForm((prev) => ({ ...prev, additionalImages: files })),
@@ -133,6 +281,28 @@ const AddAssetForm = () => {
       ...prev,
       additionalImages: prev.additionalImages.filter((_, i) => i !== index),
     }));
+  };
+
+  const handleDescriptionChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
+    const value = e.target.value;
+    if (value.length > 900) {
+      setDescError("Description must be 900 characters or less.");
+    } else {
+      setDescError("");
+    }
+    setForm((prev) => ({ ...prev, assetDescription: value }));
+  };
+
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value && (isNaN(Number(value)) || Number(value) < 0.001)) {
+      setPriceError("Price per token must be at least 0.001");
+    } else {
+      setPriceError("");
+    }
+    setForm((prev) => ({ ...prev, pricePerToken: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -301,12 +471,31 @@ const AddAssetForm = () => {
                 id="assetDescription"
                 name="assetDescription"
                 value={form.assetDescription}
-                onChange={handleChange}
+                onChange={handleDescriptionChange}
                 placeholder="Provide a detailed description of the asset, its features, and investment potential..."
                 className="min-h-[120px] resize-none"
+                maxLength={900}
                 required
               />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{form.assetDescription.length}/900</span>
+                {descError && <span className="text-red-500">{descError}</span>}
+              </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Location Section */}
+        <Card>
+          <CardHeader>
+            <SectionHeader
+              icon={MapPin}
+              title="Location"
+              description="Select where the asset is located"
+            />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <LocationSelector value={location} onChange={setLocation} />
           </CardContent>
         </Card>
 
@@ -326,7 +515,7 @@ const AddAssetForm = () => {
                 <DropzoneArea
                   dropzone={primaryImageDropzone}
                   file={form.primaryImage}
-                  placeholder="Upload primary image"
+                  placeholder="Upload primary image (PNG, JPEG, JPG)"
                   icon={ImageIcon}
                 />
               </div>
@@ -335,7 +524,7 @@ const AddAssetForm = () => {
                 <DropzoneArea
                   dropzone={additionalImagesDropzone}
                   files={form.additionalImages}
-                  placeholder="Upload additional images"
+                  placeholder="Upload additional images (PNG, JPEG, JPG)"
                   icon={ImageIcon}
                   multiple
                 />
@@ -397,11 +586,17 @@ const AddAssetForm = () => {
                   id="pricePerToken"
                   name="pricePerToken"
                   value={form.pricePerToken}
-                  onChange={handleChange}
+                  onChange={handlePriceChange}
                   placeholder="0.50"
                   className="h-11"
                   required
+                  type="number"
+                  min={0.001}
+                  step={0.001}
                 />
+                {priceError && (
+                  <span className="text-xs text-red-500">{priceError}</span>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="minPurchase" className="text-sm font-medium">
