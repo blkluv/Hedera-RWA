@@ -29,6 +29,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { Country, State, City } from "country-state-city";
+import FileUploader from "@/components/FileUploader";
 
 interface AssetForm {
   assetName: string;
@@ -196,6 +197,9 @@ const LocationSelector = ({
   );
 };
 
+const imageExtensions = [".png", ".jpg", ".jpeg"];
+const docExtensions = [".pdf", ".doc", ".docx"];
+
 const AddAssetForm = () => {
   const navigate = useNavigate();
   const [form, setForm] = useState<AssetForm>({
@@ -232,34 +236,10 @@ const AddAssetForm = () => {
   const [loading, setLoading] = useState(false);
   const [descError, setDescError] = useState("");
   const [priceError, setPriceError] = useState("");
-
-  // Dropzone configurations
-  const imageAccept = { "image/png": [], "image/jpeg": [], "image/jpg": [] };
-  const primaryImageDropzone = useDropzone({
-    accept: imageAccept,
-    multiple: false,
-    onDrop: (files) => setForm((prev) => ({ ...prev, primaryImage: files[0] })),
-  });
-
-  const additionalImagesDropzone = useDropzone({
-    accept: imageAccept,
-    multiple: true,
-    onDrop: (files) =>
-      setForm((prev) => ({ ...prev, additionalImages: files })),
-  });
-
-  const legalDocsDropzone = useDropzone({
-    accept: { "application/pdf": [] },
-    multiple: false,
-    onDrop: (files) => setForm((prev) => ({ ...prev, legalDocs: files[0] })),
-  });
-
-  const valuationReportDropzone = useDropzone({
-    accept: { "application/pdf": [] },
-    multiple: false,
-    onDrop: (files) =>
-      setForm((prev) => ({ ...prev, valuationReport: files[0] })),
-  });
+  const [primaryImageError, setPrimaryImageError] = useState("");
+  const [additionalImagesError, setAdditionalImagesError] = useState("");
+  const [legalDocsError, setLegalDocsError] = useState("");
+  const [mediaDocRequiredError, setMediaDocRequiredError] = useState("");
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -270,17 +250,6 @@ const AddAssetForm = () => {
 
   const handleSelectChange = (name: string, value: string) => {
     setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const removeFile = (fileType: keyof AssetForm) => {
-    setForm((prev) => ({ ...prev, [fileType]: null }));
-  };
-
-  const removeAdditionalImage = (index: number) => {
-    setForm((prev) => ({
-      ...prev,
-      additionalImages: prev.additionalImages.filter((_, i) => i !== index),
-    }));
   };
 
   const handleDescriptionChange = (
@@ -305,9 +274,75 @@ const AddAssetForm = () => {
     setForm((prev) => ({ ...prev, pricePerToken: value }));
   };
 
+  const handlePrimaryImageChange = (files: File[]) => {
+    if (files.length === 0) {
+      setForm((prev) => ({ ...prev, primaryImage: null }));
+      setPrimaryImageError("");
+      return;
+    }
+    const file = files[0];
+    if (!imageExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))) {
+      setPrimaryImageError("Only PNG, JPG, JPEG files are allowed.");
+      setForm((prev) => ({ ...prev, primaryImage: null }));
+    } else {
+      setPrimaryImageError("");
+      setForm((prev) => ({ ...prev, primaryImage: file }));
+    }
+  };
+
+  const handleAdditionalImagesChange = (files: File[]) => {
+    if (files.length === 0) {
+      setForm((prev) => ({ ...prev, additionalImages: [] }));
+      setAdditionalImagesError("");
+      return;
+    }
+    const invalid = files.find(
+      (file) =>
+        !imageExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
+    );
+    if (invalid) {
+      setAdditionalImagesError("Only PNG, JPG, JPEG files are allowed.");
+      setForm((prev) => ({ ...prev, additionalImages: [] }));
+    } else {
+      setAdditionalImagesError("");
+      setForm((prev) => ({ ...prev, additionalImages: files }));
+    }
+  };
+
+  const handleLegalDocsChange = (files: File[]) => {
+    console.log("Legal Docs Files:", files);
+    if (files.length === 0) {
+      setForm((prev) => ({ ...prev, legalDocs: null }));
+      setLegalDocsError("");
+      return;
+    }
+    const file = files[0];
+    if (!docExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))) {
+      setLegalDocsError("Only PDF, DOC, DOCX files are allowed.");
+      setForm((prev) => ({ ...prev, legalDocs: null }));
+    } else {
+      setLegalDocsError("");
+      setForm((prev) => ({ ...prev, legalDocs: file }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
+    // Validation: require at least one image or doc
+    if (
+      !form.primaryImage &&
+      form.additionalImages.length === 0 &&
+      !form.legalDocs
+    ) {
+      setMediaDocRequiredError(
+        "At least one image or legal document is required."
+      );
+      setLoading(false);
+      return;
+    } else {
+      setMediaDocRequiredError("");
+    }
     // TODO: Upload files to IPFS, collect CIDs, and construct mapping JSON
     // TODO: Call backend or smart contract to publish asset
     setTimeout(() => {
@@ -315,83 +350,6 @@ const AddAssetForm = () => {
       navigate("/portfolio");
     }, 2000);
   };
-
-  const DropzoneArea = ({
-    dropzone,
-    file,
-    files,
-    placeholder,
-    icon: Icon,
-    multiple = false,
-  }: {
-    dropzone: any;
-    file?: File | null;
-    files?: File[];
-    placeholder: string;
-    icon: any;
-    multiple?: boolean;
-  }) => (
-    <div
-      {...dropzone.getRootProps()}
-      className={`
-        relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all duration-200
-        ${
-          dropzone.isDragActive
-            ? "border-primary bg-primary/5 scale-[1.02]"
-            : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
-        }
-        ${
-          file || (files && files.length > 0)
-            ? "border-green-500 bg-green-50 dark:bg-green-950/20"
-            : ""
-        }
-      `}
-    >
-      <input {...dropzone.getInputProps()} />
-      <div className="flex flex-col items-center gap-2">
-        <Icon
-          className={`h-8 w-8 ${
-            file || (files && files.length > 0)
-              ? "text-green-600"
-              : "text-muted-foreground"
-          }`}
-        />
-        {file ? (
-          <div className="flex items-center gap-2">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <span className="text-sm font-medium text-green-700 dark:text-green-400">
-              {file.name}
-            </span>
-          </div>
-        ) : files && files.length > 0 ? (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-medium text-green-700 dark:text-green-400">
-                {files.length} file{files.length > 1 ? "s" : ""} selected
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {files.map((f, index) => (
-                <Badge key={index} variant="secondary" className="text-xs">
-                  {f.name}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-1">
-            <p className="text-sm font-medium">{placeholder}</p>
-            <p className="text-xs text-muted-foreground">
-              {dropzone.isDragActive
-                ? "Drop files here"
-                : "Drag & drop or click to browse"}
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 
   const SectionHeader = ({
     icon: Icon,
@@ -512,44 +470,69 @@ const AddAssetForm = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Primary Image *</Label>
-                <DropzoneArea
-                  dropzone={primaryImageDropzone}
-                  file={form.primaryImage}
-                  placeholder="Upload primary image (PNG, JPEG, JPG)"
-                  icon={ImageIcon}
+                <FileUploader
+                  accept="image/png,image/jpeg,image/jpg"
+                  allowedExtensions={imageExtensions}
+                  multiple={false}
+                  onFilesChange={handlePrimaryImageChange}
+                  inputId="primary-image-uploader"
                 />
+                {primaryImageError && (
+                  <div className="text-red-500 text-xs mt-1">
+                    {primaryImageError}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Additional Images</Label>
-                <DropzoneArea
-                  dropzone={additionalImagesDropzone}
-                  files={form.additionalImages}
-                  placeholder="Upload additional images (PNG, JPEG, JPG)"
-                  icon={ImageIcon}
-                  multiple
+                <FileUploader
+                  accept="image/png,image/jpeg,image/jpg"
+                  allowedExtensions={imageExtensions}
+                  multiple={true}
+                  onFilesChange={handleAdditionalImagesChange}
+                  inputId="additional-images-uploader"
                 />
+                {additionalImagesError && (
+                  <div className="text-red-500 text-xs mt-1">
+                    {additionalImagesError}
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Legal Documents</Label>
-                <DropzoneArea
-                  dropzone={legalDocsDropzone}
-                  file={form.legalDocs}
-                  placeholder="Upload legal documents"
-                  icon={FileText}
+                <FileUploader
+                  accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  allowedExtensions={docExtensions}
+                  multiple={false}
+                  onFilesChange={handleLegalDocsChange}
+                  inputId="legal-docs-uploader"
                 />
+                {legalDocsError && (
+                  <div className="text-red-500 text-xs mt-1">
+                    {legalDocsError}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Valuation Report</Label>
-                <DropzoneArea
-                  dropzone={valuationReportDropzone}
-                  file={form.valuationReport}
-                  placeholder="Upload valuation report"
-                  icon={FileText}
+                <FileUploader
+                  accept="application/pdf"
+                  allowedExtensions={[".pdf"]}
+                  multiple={false}
+                  onFilesChange={(files) =>
+                    setForm((prev) => ({ ...prev, valuationReport: files[0] }))
+                  }
+                  inputId="valuation-report-uploader"
                 />
               </div>
             </div>
+            {mediaDocRequiredError && (
+              <div className="text-red-500 text-xs mt-1">
+                {mediaDocRequiredError}
+              </div>
+            )}
           </CardContent>
         </Card>
 
