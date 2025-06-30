@@ -3,7 +3,6 @@
 import type React from "react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useDropzone } from "react-dropzone";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,7 +15,6 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import {
   Upload,
   ImageIcon,
@@ -26,10 +24,11 @@ import {
   MapPin,
   Shield,
   Star,
-  CheckCircle,
 } from "lucide-react";
 import { Country, State, City } from "country-state-city";
 import FileUploader from "@/components/FileUploader";
+import { addMonths, addQuarters, addYears, format } from "date-fns";
+import AssetValueSupply from "@/components/AssetValueSupply";
 
 interface AssetForm {
   assetName: string;
@@ -199,6 +198,12 @@ const LocationSelector = ({
 
 const imageExtensions = [".png", ".jpg", ".jpeg"];
 const docExtensions = [".pdf", ".doc", ".docx"];
+const SUPPLY_MULTIPLIERS = [0, 3, 4, 5, 6, 7];
+const PAYOUT_OPTIONS = [
+  { label: "Monthly", value: "monthly" },
+  { label: "Quarterly", value: "quarterly" },
+  { label: "Annual", value: "annual" },
+];
 
 const AddAssetForm = () => {
   const navigate = useNavigate();
@@ -240,6 +245,71 @@ const AddAssetForm = () => {
   const [additionalImagesError, setAdditionalImagesError] = useState("");
   const [legalDocsError, setLegalDocsError] = useState("");
   const [mediaDocRequiredError, setMediaDocRequiredError] = useState("");
+  const [assetValue, setAssetValue] = useState("");
+  const [supplyBase, setSupplyBase] = useState("");
+  const [supplyMultiplier, setSupplyMultiplier] = useState(0);
+  const [projectedIncome, setProjectedIncome] = useState("");
+  const [annualIncome, setAnnualIncome] = useState("");
+  const [pricePerTokenUSD, setPricePerTokenUSD] = useState("");
+  const [pricePerTokenHBAR, setPricePerTokenHBAR] = useState("");
+  const [dividendYield, setDividendYield] = useState("");
+  const [payoutFrequency, setPayoutFrequency] = useState("monthly");
+  const [nextPayout, setNextPayout] = useState("");
+  const [assetValueBase, setAssetValueBase] = useState("");
+  const [assetValueMultiplier, setAssetValueMultiplier] = useState(0);
+
+  // Calculate derived values
+  useEffect(() => {
+    const assetVal =
+      Number(assetValueBase) * Math.pow(10, assetValueMultiplier);
+    const totalSupply = Number(supplyBase) * Math.pow(10, supplyMultiplier);
+    if (totalSupply && assetVal) {
+      const priceUSD = assetVal / totalSupply;
+      setPricePerTokenUSD(priceUSD.toFixed(6));
+      // For demo, assume 1 USD = 10 HBAR (replace with real rate)
+      setPricePerTokenHBAR((priceUSD * 10).toFixed(6));
+    } else {
+      setPricePerTokenUSD("");
+      setPricePerTokenHBAR("");
+    }
+  }, [assetValueBase, assetValueMultiplier, supplyBase, supplyMultiplier]);
+
+  useEffect(() => {
+    // Calculate annual income from projected income and payout frequency
+    const pi = Number(projectedIncome);
+    let ai = 0;
+    if (pi) {
+      if (payoutFrequency === "monthly") ai = pi * 12;
+      else if (payoutFrequency === "quarterly") ai = pi * 4;
+      else ai = pi;
+    }
+    setAnnualIncome(ai ? ai.toString() : "");
+  }, [projectedIncome, payoutFrequency]);
+
+  useEffect(() => {
+    // Dividend yield = (annualIncome / assetValue) * 100
+    const ai = Number(annualIncome);
+    const av = Number(assetValue);
+    if (ai && av) {
+      setDividendYield(((ai / av) * 100).toFixed(2));
+    } else {
+      setDividendYield("");
+    }
+  }, [annualIncome, assetValue]);
+
+  useEffect(() => {
+    // Calculate next payout date
+    let next;
+    const today = new Date("2025-06-30");
+    if (payoutFrequency === "monthly") {
+      next = addMonths(today, 1);
+    } else if (payoutFrequency === "quarterly") {
+      next = addQuarters(today, 1);
+    } else if (payoutFrequency === "annual") {
+      next = addYears(today, 1);
+    }
+    setNextPayout(next ? format(next, "yyyy-MM-dd") : "");
+  }, [payoutFrequency]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -542,104 +612,30 @@ const AddAssetForm = () => {
             <SectionHeader
               icon={Coins}
               title="Token Economics"
-              description="Configure pricing and dividend information"
+              description="Configure pricing, supply, and dividend information"
             />
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="totalSupply" className="text-sm font-medium">
-                  Total Token Supply *
-                </Label>
-                <Input
-                  id="totalSupply"
-                  name="totalSupply"
-                  value={form.totalSupply}
-                  onChange={handleChange}
-                  placeholder="1000000"
-                  className="h-11"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="pricePerToken" className="text-sm font-medium">
-                  Price Per Token (HBAR) *
-                </Label>
-                <Input
-                  id="pricePerToken"
-                  name="pricePerToken"
-                  value={form.pricePerToken}
-                  onChange={handlePriceChange}
-                  placeholder="0.50"
-                  className="h-11"
-                  required
-                  type="number"
-                  min={0.001}
-                  step={0.001}
-                />
-                {priceError && (
-                  <span className="text-xs text-red-500">{priceError}</span>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="minPurchase" className="text-sm font-medium">
-                  Minimum Purchase *
-                </Label>
-                <Input
-                  id="minPurchase"
-                  name="minPurchase"
-                  value={form.minPurchase}
-                  onChange={handleChange}
-                  placeholder="100"
-                  className="h-11"
-                  required
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="dividendYield" className="text-sm font-medium">
-                  Dividend Yield (%)
-                </Label>
-                <Input
-                  id="dividendYield"
-                  name="dividendYield"
-                  value={form.dividendYield}
-                  onChange={handleChange}
-                  placeholder="5.5"
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="payoutFrequency"
-                  className="text-sm font-medium"
-                >
-                  Payout Frequency
-                </Label>
-                <Input
-                  id="payoutFrequency"
-                  name="payoutFrequency"
-                  value={form.payoutFrequency}
-                  onChange={handleChange}
-                  placeholder="Monthly"
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nextPayout" className="text-sm font-medium">
-                  Next Payout Date
-                </Label>
-                <Input
-                  id="nextPayout"
-                  type="date"
-                  name="nextPayout"
-                  value={form.nextPayout}
-                  onChange={handleChange}
-                  className="h-11"
-                />
-              </div>
-            </div>
+            <AssetValueSupply
+              assetValueBase={assetValueBase}
+              setAssetValueBase={setAssetValueBase}
+              assetValueMultiplier={assetValueMultiplier}
+              setAssetValueMultiplier={setAssetValueMultiplier}
+              supplyBase={supplyBase}
+              setSupplyBase={setSupplyBase}
+              supplyMultiplier={supplyMultiplier}
+              setSupplyMultiplier={setSupplyMultiplier}
+              projectedIncome={projectedIncome}
+              setProjectedIncome={setProjectedIncome}
+              annualIncome={annualIncome}
+              pricePerTokenUSD={pricePerTokenUSD}
+              pricePerTokenHBAR={pricePerTokenHBAR}
+              dividendYield={dividendYield}
+              payoutFrequency={payoutFrequency}
+              setPayoutFrequency={setPayoutFrequency}
+              nextPayout={nextPayout}
+              payoutOptions={PAYOUT_OPTIONS}
+            />
           </CardContent>
         </Card>
 
