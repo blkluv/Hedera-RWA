@@ -29,6 +29,13 @@ import { Country, State, City } from "country-state-city";
 import FileUploader from "@/components/FileUploader";
 import { addMonths, addQuarters, addYears, format } from "date-fns";
 import AssetValueSupply from "@/components/AssetValueSupply";
+import TokenConfigCard from "./TokenConfigCard";
+import ProgressTracker from "./ProgressTracker";
+import {
+  PrivateKey,
+  Client,
+  TopicMessageSubmitTransaction,
+} from "@hashgraph/sdk";
 
 interface AssetForm {
   assetName: string;
@@ -205,6 +212,16 @@ const PAYOUT_OPTIONS = [
   { label: "Annual", value: "annual" },
 ];
 
+const ASSET_STEPS = [
+  "Upload to IPFS",
+  "Create Hedera Token",
+  "Publish to Registry",
+  "Anchor Document Hash",
+];
+
+// Utility: get env vars (Vite style)
+const getEnv = (key: string) => import.meta.env[key] || process.env[key];
+
 const AddAssetForm = () => {
   const navigate = useNavigate();
   const [form, setForm] = useState<AssetForm>({
@@ -240,7 +257,6 @@ const AddAssetForm = () => {
   });
   const [loading, setLoading] = useState(false);
   const [descError, setDescError] = useState("");
-  const [priceError, setPriceError] = useState("");
   const [primaryImageError, setPrimaryImageError] = useState("");
   const [additionalImagesError, setAdditionalImagesError] = useState("");
   const [legalDocsError, setLegalDocsError] = useState("");
@@ -257,6 +273,16 @@ const AddAssetForm = () => {
   const [nextPayout, setNextPayout] = useState("");
   const [assetValueBase, setAssetValueBase] = useState("");
   const [assetValueMultiplier, setAssetValueMultiplier] = useState(0);
+  const [progressStep, setProgressStep] = useState(-1);
+  const [progressError, setProgressError] = useState("");
+
+  // Set HCS Topic ID from env if not already set
+  useEffect(() => {
+    const topicId = getEnv("VITE_PUBLIC_HEDERA_ASSET_TOPIC");
+    if (!form.hcsTopicId && topicId) {
+      setForm((prev) => ({ ...prev, hcsTopicId: topicId }));
+    }
+  }, []);
 
   // Calculate derived values
   useEffect(() => {
@@ -289,6 +315,7 @@ const AddAssetForm = () => {
   useEffect(() => {
     // Dividend yield = (annualIncome / assetValue) * 100
     const ai = Number(annualIncome);
+
     const av = Number(assetValue);
     if (ai && av) {
       setDividendYield(((ai / av) * 100).toFixed(2));
@@ -311,6 +338,17 @@ const AddAssetForm = () => {
     setNextPayout(next ? format(next, "yyyy-MM-dd") : "");
   }, [payoutFrequency]);
 
+  // Keep assetValue in sync with assetValueBase and assetValueMultiplier
+  useEffect(() => {
+    if (assetValueBase && assetValueMultiplier !== undefined) {
+      setAssetValue(
+        String(Number(assetValueBase) * Math.pow(10, assetValueMultiplier))
+      );
+    } else {
+      setAssetValue("");
+    }
+  }, [assetValueBase, assetValueMultiplier]);
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
@@ -332,16 +370,6 @@ const AddAssetForm = () => {
       setDescError("");
     }
     setForm((prev) => ({ ...prev, assetDescription: value }));
-  };
-
-  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (value && (isNaN(Number(value)) || Number(value) < 0.001)) {
-      setPriceError("Price per token must be at least 0.001");
-    } else {
-      setPriceError("");
-    }
-    setForm((prev) => ({ ...prev, pricePerToken: value }));
   };
 
   const handlePrimaryImageChange = (files: File[]) => {
@@ -380,7 +408,6 @@ const AddAssetForm = () => {
   };
 
   const handleLegalDocsChange = (files: File[]) => {
-    console.log("Legal Docs Files:", files);
     if (files.length === 0) {
       setForm((prev) => ({ ...prev, legalDocs: null }));
       setLegalDocsError("");
@@ -396,29 +423,104 @@ const AddAssetForm = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  // Helper: Hash a file (SHA-256)
+  async function hashFile(file: File): Promise<string> {
+    const arrayBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  // Helper: Anchor file hash to HCS
+  async function anchorDocumentHash(
+    file: File,
+    fileType: string,
+    topicId: string,
+    client: any
+  ) {
+    const fileHash = await hashFile(file);
+    const hashPayload = {
+      fileHash,
+      fileType,
+      timestamp: new Date().toISOString(),
+    };
+    const tx = new TopicMessageSubmitTransaction()
+      .setTopicId(topicId)
+      .setMessage(JSON.stringify(hashPayload));
+    const submit = await tx.execute(client);
+    const receipt = await submit.getReceipt(client);
+    return {
+      fileHash,
+      // consensusTimestamp is not available on receipt; omit or get from submit.transactionId.validStart if needed
+      status: receipt.status.toString(),
+    };
+  }
+
+  // --- Asset Submission Handler ---
+  const handleAssetSubmission = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-    // Validation: require at least one image or doc
-    if (
-      !form.primaryImage &&
-      form.additionalImages.length === 0 &&
-      !form.legalDocs
-    ) {
-      setMediaDocRequiredError(
-        "At least one image or legal document is required."
+    setProgressStep(0);
+    setProgressError("");
+    try {
+      // 1. Upload to IPFS (file + metadata)
+      // (Stub: replace with real upload logic)
+      setProgressStep(0);
+      // const { metadataCID } = await uploadAssetToIPFS(...);
+      const metadataCID = "demo-metadata-cid";
+      // 2. Create Hedera Token
+      setProgressStep(1);
+      // const tokenId = await createHederaToken(metadataCID, ...);
+      const tokenId = "0.0.123456";
+      // 3. Publish to Registry
+      setProgressStep(2);
+      // await publishToRegistry(tokenId, metadataCID, ...);
+      // 4. Anchor document hash for each file (primary, additional, legal, valuation)
+      setProgressStep(3);
+      const client = Client.forTestnet().setOperator(
+        getEnv("VITE_PUBLIC_TREASURY_ACCOUNT_ID"),
+        getEnv("VITE_PUBLIC_ENCODED_PRIVATE_KEY")
       );
-      setLoading(false);
-      return;
-    } else {
-      setMediaDocRequiredError("");
-    }
-    // TODO: Upload files to IPFS, collect CIDs, and construct mapping JSON
-    // TODO: Call backend or smart contract to publish asset
-    setTimeout(() => {
+      const docTopicId = getEnv("VITE_PUBLIC_HEDERA_ASSET_TOPIC");
+      // Anchor primary image
+      if (form.primaryImage) {
+        await anchorDocumentHash(
+          form.primaryImage,
+          form.primaryImage.type,
+          docTopicId,
+          client
+        );
+      }
+      // Anchor additional images
+      for (const img of form.additionalImages) {
+        await anchorDocumentHash(img, img.type, docTopicId, client);
+      }
+      // Anchor legal docs
+      if (form.legalDocs) {
+        await anchorDocumentHash(
+          form.legalDocs,
+          form.legalDocs.type,
+          docTopicId,
+          client
+        );
+      }
+      // Anchor valuation report
+      if (form.valuationReport) {
+        await anchorDocumentHash(
+          form.valuationReport,
+          form.valuationReport.type,
+          docTopicId,
+          client
+        );
+      }
+      setProgressStep(ASSET_STEPS.length);
       setLoading(false);
       navigate("/portfolio");
-    }, 2000);
+    } catch (err: any) {
+      setProgressError(err.message || "Submission failed");
+      setLoading(false);
+    }
   };
 
   const SectionHeader = ({
@@ -450,7 +552,7 @@ const AddAssetForm = () => {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form onSubmit={handleAssetSubmission} className="space-y-8">
         {/* Basic Information */}
         <Card>
           <CardHeader>
@@ -639,142 +741,12 @@ const AddAssetForm = () => {
           </CardContent>
         </Card>
 
-        {/* Token Configuration */}
-        <Card>
-          <CardHeader>
-            <SectionHeader
-              icon={Settings}
-              title="Token Configuration"
-              description="Set up token parameters and blockchain settings"
-            />
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="tokenName" className="text-sm font-medium">
-                  Token Name *
-                </Label>
-                <Input
-                  id="tokenName"
-                  name="tokenName"
-                  value={form.tokenName}
-                  onChange={handleChange}
-                  placeholder="Downtown Office Token"
-                  className="h-11"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="tokenSymbol" className="text-sm font-medium">
-                  Token Symbol *
-                </Label>
-                <Input
-                  id="tokenSymbol"
-                  name="tokenSymbol"
-                  value={form.tokenSymbol}
-                  onChange={handleChange}
-                  placeholder="DOT"
-                  className="h-11"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="decimals" className="text-sm font-medium">
-                  Decimals *
-                </Label>
-                <Input
-                  id="decimals"
-                  name="decimals"
-                  value={form.decimals}
-                  onChange={handleChange}
-                  placeholder="8"
-                  className="h-11"
-                  required
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="treasuryAccount"
-                  className="text-sm font-medium"
-                >
-                  Treasury Account *
-                </Label>
-                <Input
-                  id="treasuryAccount"
-                  name="treasuryAccount"
-                  value={form.treasuryAccount}
-                  onChange={handleChange}
-                  placeholder="0.0.123456"
-                  className="h-11"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="supplyType" className="text-sm font-medium">
-                  Supply Type *
-                </Label>
-                <Select
-                  value={form.supplyType}
-                  onValueChange={(value) =>
-                    handleSelectChange("supplyType", value)
-                  }
-                >
-                  <SelectTrigger className="h-11">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="finite">Finite</SelectItem>
-                    <SelectItem value="infinite">Infinite</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="kycKey" className="text-sm font-medium">
-                  KYC Key
-                </Label>
-                <Input
-                  id="kycKey"
-                  name="kycKey"
-                  value={form.kycKey}
-                  onChange={handleChange}
-                  placeholder="Optional KYC key"
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="freezeKey" className="text-sm font-medium">
-                  Freeze Key
-                </Label>
-                <Input
-                  id="freezeKey"
-                  name="freezeKey"
-                  value={form.freezeKey}
-                  onChange={handleChange}
-                  placeholder="Optional freeze key"
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="hcsTopicId" className="text-sm font-medium">
-                  HCS Topic ID *
-                </Label>
-                <Input
-                  id="hcsTopicId"
-                  name="hcsTopicId"
-                  value={form.hcsTopicId}
-                  onChange={handleChange}
-                  placeholder="0.0.789012"
-                  className="h-11"
-                  required
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Token Configuration (now a subcomponent) */}
+        <TokenConfigCard
+          form={form}
+          handleChange={handleChange}
+          handleSelectChange={handleSelectChange}
+        />
 
         {/* Additional Information */}
         <Card>
@@ -837,6 +809,15 @@ const AddAssetForm = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Progress Tracker */}
+        {loading && (
+          <ProgressTracker
+            currentStep={progressStep}
+            steps={ASSET_STEPS}
+            error={progressError}
+          />
+        )}
 
         {/* Submit Button */}
         <div className="flex justify-center pt-6">
