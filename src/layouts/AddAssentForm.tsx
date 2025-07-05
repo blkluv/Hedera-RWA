@@ -29,13 +29,11 @@ import { Country, State, City } from "country-state-city";
 import FileUploader from "@/components/FileUploader";
 import { addMonths, addQuarters, addYears, format } from "date-fns";
 import AssetValueSupply from "@/components/AssetValueSupply";
-import TokenConfigCard from "./TokenConfigCard";
-import ProgressTracker from "./ProgressTracker";
-import {
-  PrivateKey,
-  Client,
-  TopicMessageSubmitTransaction,
-} from "@hashgraph/sdk";
+import { createFungibleToken } from "@/utils/tokenCreate";
+import { getHbarUsdPrice } from "@/utils/getHbarUsdPrice";
+import { TopicMessageSubmitTransaction } from "@hashgraph/sdk";
+import { getEnv } from "@/lib/utils";
+import AssetSubmissionHandler from "@/components/AssetSubmissionHandler";
 
 interface AssetForm {
   assetName: string;
@@ -216,11 +214,8 @@ const ASSET_STEPS = [
   "Upload to IPFS",
   "Create Hedera Token",
   "Publish to Registry",
-  "Anchor Document Hash",
+  "Anchor Document Hashes",
 ];
-
-// Utility: get env vars (Vite style)
-const getEnv = (key: string) => import.meta.env[key] || process.env[key];
 
 const AddAssetForm = () => {
   const navigate = useNavigate();
@@ -257,6 +252,7 @@ const AddAssetForm = () => {
   });
   const [loading, setLoading] = useState(false);
   const [descError, setDescError] = useState("");
+  const [priceError, setPriceError] = useState("");
   const [primaryImageError, setPrimaryImageError] = useState("");
   const [additionalImagesError, setAdditionalImagesError] = useState("");
   const [legalDocsError, setLegalDocsError] = useState("");
@@ -283,21 +279,27 @@ const AddAssetForm = () => {
       setForm((prev) => ({ ...prev, hcsTopicId: topicId }));
     }
   }, []);
-
   // Calculate derived values
   useEffect(() => {
-    const assetVal =
-      Number(assetValueBase) * Math.pow(10, assetValueMultiplier);
-    const totalSupply = Number(supplyBase) * Math.pow(10, supplyMultiplier);
-    if (totalSupply && assetVal) {
-      const priceUSD = assetVal / totalSupply;
-      setPricePerTokenUSD(priceUSD.toFixed(6));
-      // For demo, assume 1 USD = 10 HBAR (replace with real rate)
-      setPricePerTokenHBAR((priceUSD * 10).toFixed(6));
-    } else {
-      setPricePerTokenUSD("");
-      setPricePerTokenHBAR("");
+    async function updatePricePerToken() {
+      const assetVal =
+        Number(assetValueBase) * Math.pow(10, assetValueMultiplier);
+      const totalSupply = Number(supplyBase) * Math.pow(10, supplyMultiplier);
+      if (totalSupply && assetVal) {
+        const priceUSD = assetVal / totalSupply;
+        setPricePerTokenUSD(priceUSD.toFixed(6));
+        try {
+          const hbarUsd = await getHbarUsdPrice();
+          setPricePerTokenHBAR((priceUSD / hbarUsd).toFixed(6));
+        } catch {
+          setPricePerTokenHBAR("");
+        }
+      } else {
+        setPricePerTokenUSD("");
+        setPricePerTokenHBAR("");
+      }
     }
+    updatePricePerToken();
   }, [assetValueBase, assetValueMultiplier, supplyBase, supplyMultiplier]);
 
   useEffect(() => {
@@ -315,7 +317,6 @@ const AddAssetForm = () => {
   useEffect(() => {
     // Dividend yield = (annualIncome / assetValue) * 100
     const ai = Number(annualIncome);
-
     const av = Number(assetValue);
     if (ai && av) {
       setDividendYield(((ai / av) * 100).toFixed(2));
@@ -338,17 +339,6 @@ const AddAssetForm = () => {
     setNextPayout(next ? format(next, "yyyy-MM-dd") : "");
   }, [payoutFrequency]);
 
-  // Keep assetValue in sync with assetValueBase and assetValueMultiplier
-  useEffect(() => {
-    if (assetValueBase && assetValueMultiplier !== undefined) {
-      setAssetValue(
-        String(Number(assetValueBase) * Math.pow(10, assetValueMultiplier))
-      );
-    } else {
-      setAssetValue("");
-    }
-  }, [assetValueBase, assetValueMultiplier]);
-
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
@@ -370,6 +360,16 @@ const AddAssetForm = () => {
       setDescError("");
     }
     setForm((prev) => ({ ...prev, assetDescription: value }));
+  };
+
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value && (isNaN(Number(value)) || Number(value) < 0.001)) {
+      setPriceError("Price per token must be at least 0.001");
+    } else {
+      setPriceError("");
+    }
+    setForm((prev) => ({ ...prev, pricePerToken: value }));
   };
 
   const handlePrimaryImageChange = (files: File[]) => {
@@ -408,6 +408,7 @@ const AddAssetForm = () => {
   };
 
   const handleLegalDocsChange = (files: File[]) => {
+    console.log("Legal Docs Files:", files);
     if (files.length === 0) {
       setForm((prev) => ({ ...prev, legalDocs: null }));
       setLegalDocsError("");
@@ -422,7 +423,6 @@ const AddAssetForm = () => {
       setForm((prev) => ({ ...prev, legalDocs: file }));
     }
   };
-
   // Helper: Hash a file (SHA-256)
   async function hashFile(file: File): Promise<string> {
     const arrayBuffer = await file.arrayBuffer();
@@ -457,7 +457,6 @@ const AddAssetForm = () => {
     };
   }
 
-  // --- Asset Submission Handler ---
   const handleAssetSubmission = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -465,19 +464,32 @@ const AddAssetForm = () => {
     setProgressError("");
     try {
       // 1. Upload to IPFS (file + metadata)
-      // (Stub: replace with real upload logic)
       setProgressStep(0);
+      // TODO: Replace with real upload logic
       // const { metadataCID } = await uploadAssetToIPFS(...);
       const metadataCID = "demo-metadata-cid";
+
       // 2. Create Hedera Token
       setProgressStep(1);
-      // const tokenId = await createHederaToken(metadataCID, ...);
-      const tokenId = "0.0.123456";
-      // 3. Publish to Registry
+      const tokenId = await createFungibleToken({
+        name: form.tokenName,
+        symbol: form.tokenSymbol,
+        decimals: Number(form.decimals) || 2,
+        initialSupply: Number(form.totalSupply) || 1000000,
+        memo: form.assetDescription,
+        supplyType: form.supplyType === "finite" ? "FINITE" : "INFINITE",
+        maxSupply:
+          form.supplyType === "finite" ? Number(form.totalSupply) : null,
+      });
+
+      // 3. Publish to Registry (stub)
       setProgressStep(2);
       // await publishToRegistry(tokenId, metadataCID, ...);
+
       // 4. Anchor document hash for each file (primary, additional, legal, valuation)
       setProgressStep(3);
+      // Set up Hedera client
+      const { Client } = await import("@hashgraph/sdk");
       const client = Client.forTestnet().setOperator(
         getEnv("VITE_PUBLIC_TREASURY_ACCOUNT_ID"),
         getEnv("VITE_PUBLIC_ENCODED_PRIVATE_KEY")
@@ -514,7 +526,7 @@ const AddAssetForm = () => {
           client
         );
       }
-      setProgressStep(ASSET_STEPS.length);
+      setProgressStep(4); // 4 steps: IPFS upload, token creation, registry publish, document anchoring
       setLoading(false);
       navigate("/portfolio");
     } catch (err: any) {
@@ -543,6 +555,37 @@ const AddAssetForm = () => {
     </div>
   );
 
+  // Simple ProgressTracker component for step display
+  const ProgressTracker = ({
+    currentStep,
+    steps,
+    error,
+  }: {
+    currentStep: number;
+    steps: string[];
+    error?: string;
+  }) => (
+    <div className="mb-6">
+      <ol className="flex flex-col md:flex-row gap-2 md:gap-4">
+        {steps.map((step, idx) => (
+          <li
+            key={step}
+            className={`px-3 py-1 rounded ${
+              idx === currentStep
+                ? "bg-primary text-white"
+                : idx < currentStep
+                ? "bg-green-100 text-green-700"
+                : "bg-gray-100 text-gray-500"
+            }`}
+          >
+            {step}
+          </li>
+        ))}
+      </ol>
+      {error && <div className="text-red-500 mt-2">{error}</div>}
+    </div>
+  );
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
       <div className="text-center space-y-2">
@@ -551,296 +594,448 @@ const AddAssetForm = () => {
           Create a new tokenized asset for your portfolio
         </p>
       </div>
-
-      <form onSubmit={handleAssetSubmission} className="space-y-8">
-        {/* Basic Information */}
-        <Card>
-          <CardHeader>
-            <SectionHeader
-              icon={FileText}
-              title="Basic Information"
-              description="Provide essential details about your asset"
-            />
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="assetName" className="text-sm font-medium">
-                  Asset Name *
-                </Label>
-                <Input
-                  id="assetName"
-                  name="assetName"
-                  value={form.assetName}
-                  onChange={handleChange}
-                  placeholder="e.g., Downtown Office Building"
-                  className="h-11"
-                  required
+      <AssetSubmissionHandler
+        form={form}
+        onSuccess={() => navigate("/portfolio")}
+        ProgressTracker={ProgressTracker}
+        ASSET_STEPS={ASSET_STEPS}
+      >
+        {(handleAssetSubmission, loading) => (
+          <form onSubmit={handleAssetSubmission} className="space-y-8">
+            {/* Basic Information */}
+            <Card>
+              <CardHeader>
+                <SectionHeader
+                  icon={FileText}
+                  title="Basic Information"
+                  description="Provide essential details about your asset"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="category" className="text-sm font-medium">
-                  Category *
-                </Label>
-                <Input
-                  id="category"
-                  name="category"
-                  value={form.category}
-                  onChange={handleChange}
-                  placeholder="e.g., Real Estate, Art, Commodities"
-                  className="h-11"
-                  required
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="assetDescription" className="text-sm font-medium">
-                Asset Description *
-              </Label>
-              <Textarea
-                id="assetDescription"
-                name="assetDescription"
-                value={form.assetDescription}
-                onChange={handleDescriptionChange}
-                placeholder="Provide a detailed description of the asset, its features, and investment potential..."
-                className="min-h-[120px] resize-none"
-                maxLength={900}
-                required
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{form.assetDescription.length}/900</span>
-                {descError && <span className="text-red-500">{descError}</span>}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="assetName" className="text-sm font-medium">
+                      Asset Name *
+                    </Label>
+                    <Input
+                      id="assetName"
+                      name="assetName"
+                      value={form.assetName}
+                      onChange={handleChange}
+                      placeholder="e.g., Downtown Office Building"
+                      className="h-11"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category" className="text-sm font-medium">
+                      Category *
+                    </Label>
+                    <Input
+                      id="category"
+                      name="category"
+                      value={form.category}
+                      onChange={handleChange}
+                      placeholder="e.g., Real Estate, Art, Commodities"
+                      className="h-11"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="assetDescription"
+                    className="text-sm font-medium"
+                  >
+                    Asset Description *
+                  </Label>
+                  <Textarea
+                    id="assetDescription"
+                    name="assetDescription"
+                    value={form.assetDescription}
+                    onChange={handleDescriptionChange}
+                    placeholder="Provide a detailed description of the asset, its features, and investment potential..."
+                    className="min-h-[120px] resize-none"
+                    maxLength={900}
+                    required
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{form.assetDescription.length}/900</span>
+                    {descError && (
+                      <span className="text-red-500">{descError}</span>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Location Section */}
-        <Card>
-          <CardHeader>
-            <SectionHeader
-              icon={MapPin}
-              title="Location"
-              description="Select where the asset is located"
-            />
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <LocationSelector value={location} onChange={setLocation} />
-          </CardContent>
-        </Card>
-
-        {/* Media & Documents */}
-        <Card>
-          <CardHeader>
-            <SectionHeader
-              icon={ImageIcon}
-              title="Media & Documents"
-              description="Upload images and legal documentation"
-            />
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Primary Image *</Label>
-                <FileUploader
-                  accept="image/png,image/jpeg,image/jpg"
-                  allowedExtensions={imageExtensions}
-                  multiple={false}
-                  onFilesChange={handlePrimaryImageChange}
-                  inputId="primary-image-uploader"
+            {/* Location Section */}
+            <Card>
+              <CardHeader>
+                <SectionHeader
+                  icon={MapPin}
+                  title="Location"
+                  description="Select where the asset is located"
                 />
-                {primaryImageError && (
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <LocationSelector value={location} onChange={setLocation} />
+              </CardContent>
+            </Card>
+
+            {/* Media & Documents */}
+            <Card>
+              <CardHeader>
+                <SectionHeader
+                  icon={ImageIcon}
+                  title="Media & Documents"
+                  description="Upload images and legal documentation"
+                />
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Primary Image *
+                    </Label>
+                    <FileUploader
+                      accept="image/png,image/jpeg,image/jpg"
+                      allowedExtensions={imageExtensions}
+                      multiple={false}
+                      onFilesChange={handlePrimaryImageChange}
+                      inputId="primary-image-uploader"
+                    />
+                    {primaryImageError && (
+                      <div className="text-red-500 text-xs mt-1">
+                        {primaryImageError}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Additional Images
+                    </Label>
+                    <FileUploader
+                      accept="image/png,image/jpeg,image/jpg"
+                      allowedExtensions={imageExtensions}
+                      multiple={true}
+                      onFilesChange={handleAdditionalImagesChange}
+                      inputId="additional-images-uploader"
+                    />
+                    {additionalImagesError && (
+                      <div className="text-red-500 text-xs mt-1">
+                        {additionalImagesError}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Legal Documents
+                    </Label>
+                    <FileUploader
+                      accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      allowedExtensions={docExtensions}
+                      multiple={false}
+                      onFilesChange={handleLegalDocsChange}
+                      inputId="legal-docs-uploader"
+                    />
+                    {legalDocsError && (
+                      <div className="text-red-500 text-xs mt-1">
+                        {legalDocsError}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Valuation Report
+                    </Label>
+                    <FileUploader
+                      accept="application/pdf"
+                      allowedExtensions={[".pdf"]}
+                      multiple={false}
+                      onFilesChange={(files) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          valuationReport: files[0],
+                        }))
+                      }
+                      inputId="valuation-report-uploader"
+                    />
+                  </div>
+                </div>
+                {mediaDocRequiredError && (
                   <div className="text-red-500 text-xs mt-1">
-                    {primaryImageError}
+                    {mediaDocRequiredError}
                   </div>
                 )}
-              </div>
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Additional Images</Label>
-                <FileUploader
-                  accept="image/png,image/jpeg,image/jpg"
-                  allowedExtensions={imageExtensions}
-                  multiple={true}
-                  onFilesChange={handleAdditionalImagesChange}
-                  inputId="additional-images-uploader"
+              </CardContent>
+            </Card>
+
+            {/* Token Economics */}
+            <Card>
+              <CardHeader>
+                <SectionHeader
+                  icon={Coins}
+                  title="Token Economics"
+                  description="Configure pricing, supply, and dividend information"
                 />
-                {additionalImagesError && (
-                  <div className="text-red-500 text-xs mt-1">
-                    {additionalImagesError}
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <AssetValueSupply
+                  assetValueBase={assetValueBase}
+                  setAssetValueBase={setAssetValueBase}
+                  assetValueMultiplier={assetValueMultiplier}
+                  setAssetValueMultiplier={setAssetValueMultiplier}
+                  supplyBase={supplyBase}
+                  setSupplyBase={setSupplyBase}
+                  supplyMultiplier={supplyMultiplier}
+                  setSupplyMultiplier={setSupplyMultiplier}
+                  projectedIncome={projectedIncome}
+                  setProjectedIncome={setProjectedIncome}
+                  annualIncome={annualIncome}
+                  pricePerTokenUSD={pricePerTokenUSD}
+                  pricePerTokenHBAR={pricePerTokenHBAR}
+                  dividendYield={dividendYield}
+                  payoutFrequency={payoutFrequency}
+                  setPayoutFrequency={setPayoutFrequency}
+                  nextPayout={nextPayout}
+                  payoutOptions={PAYOUT_OPTIONS}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Token Configuration */}
+            <Card>
+              <CardHeader>
+                <SectionHeader
+                  icon={Settings}
+                  title="Token Configuration"
+                  description="Set up token parameters and blockchain settings"
+                />
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="tokenName" className="text-sm font-medium">
+                      Token Name *
+                    </Label>
+                    <Input
+                      id="tokenName"
+                      name="tokenName"
+                      value={form.tokenName}
+                      onChange={handleChange}
+                      placeholder="Downtown Office Token"
+                      className="h-11"
+                      required
+                    />
                   </div>
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Legal Documents</Label>
-                <FileUploader
-                  accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  allowedExtensions={docExtensions}
-                  multiple={false}
-                  onFilesChange={handleLegalDocsChange}
-                  inputId="legal-docs-uploader"
-                />
-                {legalDocsError && (
-                  <div className="text-red-500 text-xs mt-1">
-                    {legalDocsError}
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="tokenSymbol"
+                      className="text-sm font-medium"
+                    >
+                      Token Symbol *
+                    </Label>
+                    <Input
+                      id="tokenSymbol"
+                      name="tokenSymbol"
+                      value={form.tokenSymbol}
+                      onChange={handleChange}
+                      placeholder="DOT"
+                      className="h-11"
+                      required
+                    />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="decimals" className="text-sm font-medium">
+                      Decimals *
+                    </Label>
+                    <Input
+                      id="decimals"
+                      name="decimals"
+                      value={form.decimals}
+                      onChange={handleChange}
+                      placeholder="8"
+                      className="h-11"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="treasuryAccount"
+                      className="text-sm font-medium"
+                    >
+                      Treasury Account *
+                    </Label>
+                    <Input
+                      id="treasuryAccount"
+                      name="treasuryAccount"
+                      value={form.treasuryAccount}
+                      onChange={handleChange}
+                      placeholder="0.0.123456"
+                      className="h-11"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="supplyType" className="text-sm font-medium">
+                      Supply Type *
+                    </Label>
+                    <Select
+                      value={form.supplyType}
+                      onValueChange={(value) =>
+                        handleSelectChange("supplyType", value)
+                      }
+                    >
+                      <SelectTrigger className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="finite">Finite</SelectItem>
+                        <SelectItem value="infinite">Infinite</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="kycKey" className="text-sm font-medium">
+                      KYC Key
+                    </Label>
+                    <Input
+                      id="kycKey"
+                      name="kycKey"
+                      value={form.kycKey}
+                      onChange={handleChange}
+                      placeholder="Optional KYC key"
+                      className="h-11"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="freezeKey" className="text-sm font-medium">
+                      Freeze Key
+                    </Label>
+                    <Input
+                      id="freezeKey"
+                      name="freezeKey"
+                      value={form.freezeKey}
+                      onChange={handleChange}
+                      placeholder="Optional Freeze key"
+                      className="h-11"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="hcsTopicId" className="text-sm font-medium">
+                      HCS Topic ID *
+                    </Label>
+                    <Input
+                      id="hcsTopicId"
+                      name="hcsTopicId"
+                      value={form.hcsTopicId}
+                      onChange={handleChange}
+                      placeholder="0.0.789012"
+                      className="h-11"
+                      required
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Additional Information */}
+            <Card>
+              <CardHeader>
+                <SectionHeader
+                  icon={Star}
+                  title="Additional Information"
+                  description="Optional details to enhance your asset listing"
+                />
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="geolocation"
+                      className="text-sm font-medium flex items-center gap-2"
+                    >
+                      <MapPin className="h-4 w-4" />
+                      Geolocation (lat,lng)
+                    </Label>
+                    <Input
+                      id="geolocation"
+                      name="geolocation"
+                      value={form.geolocation}
+                      onChange={handleChange}
+                      placeholder="40.7128,-74.0060"
+                      className="h-11"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="insuranceDetails"
+                      className="text-sm font-medium flex items-center gap-2"
+                    >
+                      <Shield className="h-4 w-4" />
+                      Insurance Details
+                    </Label>
+                    <Input
+                      id="insuranceDetails"
+                      name="insuranceDetails"
+                      value={form.insuranceDetails}
+                      onChange={handleChange}
+                      placeholder="Enter insurance details"
+                      className="h-11"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="specialRights"
+                      className="text-sm font-medium flex items-center gap-2"
+                    >
+                      <Star className="h-4 w-4" />
+                      Special Rights
+                    </Label>
+                    <Input
+                      id="specialRights"
+                      name="specialRights"
+                      value={form.specialRights}
+                      onChange={handleChange}
+                      placeholder="Describe any special rights"
+                      className="h-11"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Submit Button */}
+            <div className="flex justify-center">
+              <Button
+                type="submit"
+                disabled={loading}
+                size="lg"
+                className="px-12 h-12 text-base font-medium"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Creating Asset...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Create Asset
+                  </>
                 )}
-              </div>
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Valuation Report</Label>
-                <FileUploader
-                  accept="application/pdf"
-                  allowedExtensions={[".pdf"]}
-                  multiple={false}
-                  onFilesChange={(files) =>
-                    setForm((prev) => ({ ...prev, valuationReport: files[0] }))
-                  }
-                  inputId="valuation-report-uploader"
-                />
-              </div>
+              </Button>
             </div>
-            {mediaDocRequiredError && (
-              <div className="text-red-500 text-xs mt-1">
-                {mediaDocRequiredError}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Token Economics */}
-        <Card>
-          <CardHeader>
-            <SectionHeader
-              icon={Coins}
-              title="Token Economics"
-              description="Configure pricing, supply, and dividend information"
-            />
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <AssetValueSupply
-              assetValueBase={assetValueBase}
-              setAssetValueBase={setAssetValueBase}
-              assetValueMultiplier={assetValueMultiplier}
-              setAssetValueMultiplier={setAssetValueMultiplier}
-              supplyBase={supplyBase}
-              setSupplyBase={setSupplyBase}
-              supplyMultiplier={supplyMultiplier}
-              setSupplyMultiplier={setSupplyMultiplier}
-              projectedIncome={projectedIncome}
-              setProjectedIncome={setProjectedIncome}
-              annualIncome={annualIncome}
-              pricePerTokenUSD={pricePerTokenUSD}
-              pricePerTokenHBAR={pricePerTokenHBAR}
-              dividendYield={dividendYield}
-              payoutFrequency={payoutFrequency}
-              setPayoutFrequency={setPayoutFrequency}
-              nextPayout={nextPayout}
-              payoutOptions={PAYOUT_OPTIONS}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Token Configuration (now a subcomponent) */}
-        <TokenConfigCard
-          form={form}
-          handleChange={handleChange}
-          handleSelectChange={handleSelectChange}
-        />
-
-        {/* Additional Information */}
-        <Card>
-          <CardHeader>
-            <SectionHeader
-              icon={Star}
-              title="Additional Information"
-              description="Optional details to enhance your asset listing"
-            />
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="geolocation"
-                  className="text-sm font-medium flex items-center gap-2"
-                >
-                  <MapPin className="h-4 w-4" />
-                  Geolocation (lat,lng)
-                </Label>
-                <Input
-                  id="geolocation"
-                  name="geolocation"
-                  value={form.geolocation}
-                  onChange={handleChange}
-                  placeholder="40.7128,-74.0060"
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="insuranceDetails"
-                  className="text-sm font-medium flex items-center gap-2"
-                >
-                  <Shield className="h-4 w-4" />
-                  Insurance Details
-                </Label>
-                <Input
-                  id="insuranceDetails"
-                  name="insuranceDetails"
-                  value={form.insuranceDetails}
-                  onChange={handleChange}
-                  placeholder="Insurance provider and coverage"
-                  className="h-11"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="specialRights" className="text-sm font-medium">
-                Special Rights
-              </Label>
-              <Input
-                id="specialRights"
-                name="specialRights"
-                value={form.specialRights}
-                onChange={handleChange}
-                placeholder="Any special rights or privileges for token holders"
-                className="h-11"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Progress Tracker */}
-        {loading && (
-          <ProgressTracker
-            currentStep={progressStep}
-            steps={ASSET_STEPS}
-            error={progressError}
-          />
+          </form>
         )}
-
-        {/* Submit Button */}
-        <div className="flex justify-center pt-6">
-          <Button
-            type="submit"
-            disabled={loading}
-            size="lg"
-            className="px-12 h-12 text-base font-medium"
-          >
-            {loading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                Creating Asset...
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4 mr-2" />
-                Create Asset
-              </>
-            )}
-          </Button>
-        </div>
-      </form>
+      </AssetSubmissionHandler>
     </div>
   );
 };
