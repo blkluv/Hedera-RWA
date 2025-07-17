@@ -2,13 +2,52 @@ import React, { useState } from "react";
 import { createFungibleToken } from "@/utils/tokenCreate";
 import { getEnv } from "@/lib/utils";
 import { TopicMessageSubmitTransaction } from "@hashgraph/sdk";
+import { publishToRegistry } from "@/utils/registry";
+
+// Helper: Upload a file to IPFS via Pinata
+async function uploadFileToIPFS(file: File): Promise<string> {
+  const url = "https://api.pinata.cloud/pinning/pinFileToIPFS";
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getEnv("VITE_PUBLIC_PINATA_JWT")}`,
+    },
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Failed to upload file to IPFS");
+  const data = await res.json();
+  return data.IpfsHash;
+}
+
+// Helper: Upload metadata (JSON) to IPFS via Pinata
+async function uploadJSONToIPFS(json: any): Promise<string> {
+  const url = "https://api.pinata.cloud/pinning/pinJSONToIPFS";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getEnv("VITE_PUBLIC_PINATA_JWT")}`,
+    },
+    body: JSON.stringify(json),
+  });
+  if (!res.ok) throw new Error("Failed to upload metadata to IPFS");
+  const data = await res.json();
+  return data.IpfsHash;
+}
 
 interface AssetSubmissionHandlerProps {
   form: any;
   onSuccess: () => void;
   ProgressTracker: React.ComponentType<any>;
   ASSET_STEPS: string[];
-  children: (submit: (e: React.FormEvent<HTMLFormElement>) => void, loading: boolean, progressStep: number, progressError: string) => React.ReactNode;
+  children: (
+    submit: (e: React.FormEvent<HTMLFormElement>) => void,
+    loading: boolean,
+    progressStep: number,
+    progressError: string
+  ) => React.ReactNode;
 }
 
 // Helper: Hash a file (SHA-256)
@@ -63,9 +102,31 @@ const AssetSubmissionHandler: React.FC<AssetSubmissionHandlerProps> = ({
     try {
       // 1. Upload to IPFS (file + metadata)
       setProgressStep(0);
-      // TODO: Replace with real upload logic
-      // const { metadataCID } = await uploadAssetToIPFS(...);
-      const metadataCID = "demo-metadata-cid";
+      // Upload all files/images to IPFS
+      const ipfsCIDs: Record<string, string | string[]> = {};
+      if (form.primaryImage) {
+        ipfsCIDs.primaryImage = await uploadFileToIPFS(form.primaryImage);
+      }
+      if (form.additionalImages && Array.isArray(form.additionalImages)) {
+        ipfsCIDs.additionalImages = [];
+        for (const img of form.additionalImages) {
+          const cid = await uploadFileToIPFS(img);
+          (ipfsCIDs.additionalImages as string[]).push(cid);
+        }
+      }
+      if (form.legalDocs) {
+        ipfsCIDs.legalDocs = await uploadFileToIPFS(form.legalDocs);
+      }
+      if (form.valuationReport) {
+        ipfsCIDs.valuationReport = await uploadFileToIPFS(form.valuationReport);
+      }
+
+      // Prepare metadata including IPFS CIDs
+      const metadata = {
+        ...form,
+        ipfsCIDs,
+      };
+      const metadataCID = await uploadJSONToIPFS(metadata);
 
       // 2. Create Hedera Token
       setProgressStep(1);
@@ -76,12 +137,14 @@ const AssetSubmissionHandler: React.FC<AssetSubmissionHandlerProps> = ({
         initialSupply: Number(form.totalSupply) || 1000000,
         memo: form.assetDescription,
         supplyType: form.supplyType === "finite" ? "FINITE" : "INFINITE",
-        maxSupply: form.supplyType === "finite" ? Number(form.totalSupply) : null,
+        maxSupply:
+          form.supplyType === "finite" ? Number(form.totalSupply) : null,
       });
 
-      // 3. Publish to Registry (stub)
+      // 3. Publish to Registry
       setProgressStep(2);
-      // await publishToRegistry(tokenId, metadataCID, ...);
+      // Publish tokenId and metadataCID to registry
+      await publishToRegistry(tokenId, metadataCID);
 
       // 4. Anchor document hash for each file (primary, additional, legal, valuation)
       setProgressStep(3);
@@ -99,8 +162,10 @@ const AssetSubmissionHandler: React.FC<AssetSubmissionHandlerProps> = ({
           client
         );
       }
-      for (const img of form.additionalImages) {
-        await anchorDocumentHash(img, img.type, docTopicId, client);
+      if (form.additionalImages && Array.isArray(form.additionalImages)) {
+        for (const img of form.additionalImages) {
+          await anchorDocumentHash(img, img.type, docTopicId, client);
+        }
       }
       if (form.legalDocs) {
         await anchorDocumentHash(
