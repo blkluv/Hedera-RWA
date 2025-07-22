@@ -45,7 +45,6 @@ export async function createFungibleToken({
     .setTreasuryAccountId(operatorId)
     .setAdminKey(operatorKey)
     .setSupplyKey(operatorKey);
-
   if (
     supplyType === "FINITE" &&
     maxSupply !== null &&
@@ -63,9 +62,17 @@ export async function createFungibleToken({
 
   // Submit the signed transaction to the Hedera network
   const tokenCreateTxSubmitted = await tokenCreateTxSigned.execute(client);
+  console.log(
+    "Token Create Transaction Submitted:",
+    tokenCreateTxSubmitted.toString()
+  );
 
   // Get the transaction receipt
   const tokenCreateTxReceipt = await tokenCreateTxSubmitted.getReceipt(client);
+  console.log(
+    "Token Create Transaction Receipt:",
+    tokenCreateTxReceipt.toString()
+  );
 
   // Get and log the newly created token ID
   const tokenId = tokenCreateTxReceipt.tokenId;

@@ -1,4 +1,4 @@
-import AddAssetForm from "@/layouts/AddAssentForm";
+import AddAssetForm from "@/layouts/AddAssetForm";
 import { Navbar } from "../layouts/Navbar";
 
 export function AddAssetPage() {

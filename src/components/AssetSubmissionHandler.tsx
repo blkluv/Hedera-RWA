@@ -100,6 +100,8 @@ const AssetSubmissionHandler: React.FC<AssetSubmissionHandlerProps> = ({
     setProgressStep(0);
     setProgressError("");
     try {
+      console.log("Starting asset submission process...");
+
       // 1. Upload to IPFS (file + metadata)
       setProgressStep(0);
       // Upload all files/images to IPFS
