@@ -16,7 +16,6 @@ import {
   Upload,
   ChevronRight,
   ChevronLeft,
-  Check,
   Star,
   Shield,
   Settings,
@@ -29,8 +28,7 @@ import {
 import FileUploader from "@/components/FileUploader";
 import { addMonths, addQuarters, addYears, format } from "date-fns";
 import AssetValueSupply from "@/components/AssetValueSupply";
-import { getHbarUsdPrice } from "@/utils/getHbarUsdPrice";
-import { getEnv } from "@/lib/utils";
+import { getEnv } from "@/utils";
 import AssetSubmissionHandler from "@/components/AssetSubmissionHandler";
 import LocationSelector from "@/components/LocationSelector";
 import {

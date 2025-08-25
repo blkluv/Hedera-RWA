@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { createFungibleToken } from "@/utils/token-hedera-integration";
-import { getEnv } from "@/lib/utils";
+import { getEnv } from "@/utils";
 import { TopicMessageSubmitTransaction } from "@hashgraph/sdk";
-import { publishToRegistry } from "@/utils/registry";
+import { publishToRegistry } from "@/utils/hedera-integration";
 
 // Helper: Upload a file to IPFS via Pinata
 async function uploadFileToIPFS(file: File): Promise<string> {

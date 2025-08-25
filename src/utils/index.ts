@@ -28,9 +28,9 @@ export function hbarToUsd(hbar: number, rate: number): number {
   return hbar * rate;
 }
 
-// export function cn(...inputs: ClassValue[]) {
-//   return twMerge(clsx(inputs));
-// }
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 export function getEnv(key: string): string {
   // Try Vite env (import.meta.env), fallback to process.env for Node
   if (
