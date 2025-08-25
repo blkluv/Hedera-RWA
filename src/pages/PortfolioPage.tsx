@@ -1,5 +1,5 @@
+import { PortfolioContent } from "@/components/Portfolio/PortfolioContent";
 import { Navbar } from "../layouts/Navbar";
-import { PortfolioContent } from "../layouts/PortfolioContent";
 
 export function PortfolioPage() {
   return (

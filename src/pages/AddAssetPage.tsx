@@ -1,4 +1,4 @@
-import AddAssetForm from "@/layouts/AddAssetForm";
+// import AddAssetForm from "@/layouts/AddAssetForm";
 import { Navbar } from "../layouts/Navbar";
 
 export function AddAssetPage() {
@@ -6,7 +6,8 @@ export function AddAssetPage() {
     <div className="min-h-screen">
       <Navbar />
       <main className="container mx-auto px-4 py-8">
-        <AddAssetForm />
+        {/* <AddAssetForm /> */}
+        "Add Asset Form Coming Soon"
       </main>
     </div>
   );
