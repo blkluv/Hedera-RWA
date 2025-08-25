@@ -38,7 +38,7 @@ import {
   SectionHeader,
   StepIndicator,
 } from "@/components/StepIndicstor";
-import { uploadToIPFS } from "@/lib/hedera-integration";
+import { uploadToIPFS } from "@/utils/hedera-integration";
 interface AssetForm {
   assetName: string;
   assetDescription: string;

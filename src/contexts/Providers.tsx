@@ -6,7 +6,7 @@ import { WagmiProvider } from "wagmi";
 import { useState } from "react";
 import { BrowserRouter } from "react-router-dom";
 
-import { config as getConfig, chains } from "../config/wagmi";
+import { config as getConfig, chains } from "../utils/wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import App from "../App";

@@ -7,7 +7,7 @@ import Image from "next/image";
 import {
   fetchAssetDataFromMirrorNode,
   fetchAssetMetadataFromIPFS,
-} from "@/lib/hedera-integration";
+} from "@/utils/hedera-integration";
 import { Sheet, SheetContent, SheetClose } from "@/components/ui/sheet";
 import { AssetDetail } from "@/components/asset-detail";
 

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { createFungibleToken } from "@/utils/tokenCreate";
+import { createFungibleToken } from "@/utils/token-hedera-integration";
 import { getEnv } from "@/lib/utils";
 import { TopicMessageSubmitTransaction } from "@hashgraph/sdk";
 import { publishToRegistry } from "@/utils/registry";

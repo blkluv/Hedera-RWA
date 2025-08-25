@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { hederaTestnet } from "../config/wagmi";
+import { hederaTestnet } from "../utils/wagmi";
 
 // Utility to prompt wallet to add/switch to Hedera testnet
 export async function addOrSwitchHederaTestnet() {
