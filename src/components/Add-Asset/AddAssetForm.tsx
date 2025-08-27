@@ -717,10 +717,7 @@ const AddAssetForm: React.FC = () => {
                 Next <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
-              <Button
-                type="submit"
-                disabled={loading || Object.keys(errors).length > 0}
-              >
+              <Button type="submit" disabled={loading}>
                 {" "}
                 {loading ? "Creating Asset..." : "Create Asset"}
                 <Upload className="ml-2 h-4 w-4" />

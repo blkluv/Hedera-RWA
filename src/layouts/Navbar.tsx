@@ -34,7 +34,7 @@ export function Navbar() {
         <div className="flex items-center space-x-4">
           <Link to="/" className="flex items-center space-x-2">
             <Building2 className="h-8 w-8 text-primary" />
-            <span className="text-xl font-bold">Hedera RE</span>
+            <span className="text-xl font-bold">Hedera RWA</span>
           </Link>
         </div>
 
