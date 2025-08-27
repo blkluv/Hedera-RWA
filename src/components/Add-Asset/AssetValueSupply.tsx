@@ -8,21 +8,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import {
-  AssetValueSupplyProps,
-  PAYOUT_OPTIONS,
-  SUPPLY_MULTIPLIERS,
-} from "@/utils/form";
+import { AssetValueSupplyProps, PAYOUT_OPTIONS } from "@/utils/form";
+
+// Helper function to format number to readable units
+const formatToUnits = (number: number) => {
+  const units = ["", "Thousand", "Million", "Billion", "Trillion"];
+  const order = Math.floor(Math.log10(Math.abs(number)) / 3);
+  if (order < 0 || !number) return number.toString();
+  const unit = units[order];
+  const num = (number / Math.pow(1000, order)).toFixed(1);
+  return `${num} ${unit}`;
+};
+
+// Helper function to format number with commas
+const formatWithCommas = (value: string) => {
+  return value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+};
+
+// Helper function to remove commas
+const removeCommas = (value: string) => {
+  return value.replace(/,/g, "");
+};
 
 const AssetValueSupply: React.FC<AssetValueSupplyProps> = ({
   assetValueBase,
   setAssetValueBase,
-  assetValueMultiplier,
-  setAssetValueMultiplier,
   supplyBase,
   setSupplyBase,
-  supplyMultiplier,
-  setSupplyMultiplier,
   projectedIncome,
   setProjectedIncome,
   annualIncome,
@@ -38,21 +50,15 @@ const AssetValueSupply: React.FC<AssetValueSupplyProps> = ({
 }) => {
   // Calculate price per token
   useEffect(() => {
-    const assetValue =
-      assetValueBase && assetValueMultiplier !== undefined
-        ? Number(assetValueBase) * Math.pow(10, assetValueMultiplier)
-        : 0;
-    const totalSupply =
-      supplyBase && supplyMultiplier !== undefined
-        ? Number(supplyBase) * Math.pow(10, supplyMultiplier)
-        : 0;
+    const assetValue = Number(removeCommas(assetValueBase));
+    const totalSupply = Number(removeCommas(supplyBase));
 
     if (assetValue && totalSupply) {
       setPricePerTokenUSD((assetValue / totalSupply).toFixed(2));
     } else {
       setPricePerTokenUSD("");
     }
-  }, [assetValueBase, assetValueMultiplier, supplyBase, supplyMultiplier]);
+  }, [assetValueBase, supplyBase]);
 
   // Calculate annual income from projected income and payout frequency
   useEffect(() => {
@@ -69,17 +75,14 @@ const AssetValueSupply: React.FC<AssetValueSupplyProps> = ({
   // Calculate dividend yield
   useEffect(() => {
     const ai = Number(annualIncome);
-    const av =
-      assetValueBase && assetValueMultiplier !== undefined
-        ? Number(assetValueBase) * Math.pow(10, assetValueMultiplier)
-        : 0;
+    const av = Number(removeCommas(assetValueBase));
 
     if (ai && av) {
       setDividendYield(((ai / av) * 100).toFixed(2));
     } else {
       setDividendYield("");
     }
-  }, [annualIncome, assetValueBase, assetValueMultiplier]);
+  }, [annualIncome, assetValueBase]);
 
   // Set next payout date based on frequency
   useEffect(() => {
@@ -102,84 +105,45 @@ const AssetValueSupply: React.FC<AssetValueSupplyProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-2">
           <Label htmlFor="assetValueBase">Asset Value (USD) *</Label>
-          <div className="flex gap-2">
-            <Input
-              id="assetValueBase"
-              name="assetValueBase"
-              value={assetValueBase}
-              onChange={(e) =>
-                setAssetValueBase(e.target.value.replace(/[^\d]/g, ""))
-              }
-              placeholder="1"
-              className="h-11 w-24"
-              required
-            />
-            <Select
-              value={String(assetValueMultiplier)}
-              onValueChange={(v) => setAssetValueMultiplier(Number(v))}
-            >
-              <SelectTrigger className="h-11 w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SUPPLY_MULTIPLIERS.map((m) => (
-                  <SelectItem key={m} value={String(m)}>
-                    × 10^{m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Input
+            id="assetValueBase"
+            name="assetValueBase"
+            value={assetValueBase}
+            onChange={(e) => {
+              const formattedValue = formatWithCommas(e.target.value);
+              setAssetValueBase(formattedValue);
+            }}
+            placeholder="150,000,000"
+            className="h-11"
+            required
+          />
           <div className="text-xs text-muted-foreground mt-1">
-            Asset Value:{" "}
-            {assetValueBase && assetValueMultiplier !== undefined
-              ? (
-                  Number(assetValueBase) * Math.pow(10, assetValueMultiplier)
-                ).toLocaleString()
-              : "-"}{" "}
-            USD
+            {Number(removeCommas(assetValueBase)) > 0
+              ? `${formatToUnits(Number(removeCommas(assetValueBase)))} USD`
+              : "-"}
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="supplyBase">Token Supply *</Label>
-          <div className="flex gap-2">
-            <Input
-              id="supplyBase"
-              name="supplyBase"
-              value={supplyBase}
-              onChange={(e) =>
-                setSupplyBase(e.target.value.replace(/[^\d]/g, ""))
-              }
-              placeholder="1"
-              className="h-11 w-24"
-              required
-            />
-            <Select
-              value={String(supplyMultiplier)}
-              onValueChange={(v) => setSupplyMultiplier(Number(v))}
-            >
-              <SelectTrigger className="h-11 w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SUPPLY_MULTIPLIERS.map((m) => (
-                  <SelectItem key={m} value={String(m)}>
-                    × 10^{m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Label htmlFor="supplyBase">Token Supply (Units) *</Label>
+          <Input
+            id="supplyBase"
+            name="supplyBase"
+            value={supplyBase}
+            onChange={(e) => {
+              const formattedValue = formatWithCommas(e.target.value);
+              setSupplyBase(formattedValue);
+            }}
+            placeholder="1,000,000"
+            className="h-11"
+            required
+          />
           <div className="text-xs text-muted-foreground mt-1">
-            Total Supply:{" "}
-            {supplyBase && supplyMultiplier !== undefined
-              ? (
-                  Number(supplyBase) * Math.pow(10, supplyMultiplier)
-                ).toLocaleString()
-              : "-"}{" "}
-            tokens
+            {Number(removeCommas(supplyBase)) > 0
+              ? `${formatToUnits(Number(removeCommas(supplyBase)))} units`
+              : "-"}
           </div>
         </div>
+
         <div className="space-y-2">
           <Label>Projected Income (USD)</Label>
           <Input

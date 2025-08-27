@@ -1,5 +1,7 @@
+"use client";
+
 import { City, Country, State } from "country-state-city";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Label } from "../ui/label";
 import {
   Select,
@@ -10,6 +12,22 @@ import {
 } from "../ui/select";
 import { Input } from "../ui/input";
 
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
 // Location Selector Component
 const LocationSelector = ({
   value,
@@ -19,22 +37,47 @@ const LocationSelector = ({
   onChange: (v: { country: string; state: string; city: string }) => void;
 }) => {
   const { country, state, city } = value;
-  const [countries, setCountries] = useState<
-    { name: string; isoCode: string }[]
-  >([]);
+
+  const countries = useMemo(() => Country.getAllCountries(), []);
+
   const [states, setStates] = useState<{ name: string; isoCode: string }[]>([]);
   const [cities, setCities] = useState<{ name: string }[]>([]);
   const [countrySearch, setCountrySearch] = useState("");
   const [stateSearch, setStateSearch] = useState("");
   const [citySearch, setCitySearch] = useState("");
 
-  useEffect(() => {
-    setCountries(Country.getAllCountries());
-  }, []);
+  const debouncedCountrySearch = useDebounce(countrySearch, 300);
+  const debouncedStateSearch = useDebounce(stateSearch, 300);
+  const debouncedCitySearch = useDebounce(citySearch, 300);
+
+  const filteredCountries = useMemo(
+    () =>
+      countries.filter((c) =>
+        c.name.toLowerCase().includes(debouncedCountrySearch.toLowerCase())
+      ),
+    [countries, debouncedCountrySearch]
+  );
+
+  const filteredStates = useMemo(
+    () =>
+      states.filter((s) =>
+        s.name.toLowerCase().includes(debouncedStateSearch.toLowerCase())
+      ),
+    [states, debouncedStateSearch]
+  );
+
+  const filteredCities = useMemo(
+    () =>
+      cities.filter((c) =>
+        c.name.toLowerCase().includes(debouncedCitySearch.toLowerCase())
+      ),
+    [cities, debouncedCitySearch]
+  );
 
   useEffect(() => {
     if (country) {
-      setStates(State.getStatesOfCountry(country));
+      const newStates = State.getStatesOfCountry(country);
+      setStates(newStates);
     } else {
       setStates([]);
     }
@@ -45,31 +88,40 @@ const LocationSelector = ({
 
   useEffect(() => {
     if (country && state) {
-      setCities(City.getCitiesOfState(country, state));
+      const newCities = City.getCitiesOfState(country, state);
+      setCities(newCities);
     } else {
       setCities([]);
     }
     setCitySearch("");
   }, [country, state]);
 
-  const filteredCountries = countries.filter((c) =>
-    c.name.toLowerCase().includes(countrySearch.toLowerCase())
+  const handleCountryChange = useCallback(
+    (v: string) => {
+      onChange({ country: v, state: "", city: "" });
+    },
+    [onChange]
   );
-  const filteredStates = states.filter((s) =>
-    s.name.toLowerCase().includes(stateSearch.toLowerCase())
+
+  const handleStateChange = useCallback(
+    (v: string) => {
+      onChange({ country, state: v, city: "" });
+    },
+    [onChange, country]
   );
-  const filteredCities = cities.filter((c) =>
-    c.name.toLowerCase().includes(citySearch.toLowerCase())
+
+  const handleCityChange = useCallback(
+    (v: string) => {
+      onChange({ country, state, city: v });
+    },
+    [onChange, country, state]
   );
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
       <div>
         <Label>Country *</Label>
-        <Select
-          value={country}
-          onValueChange={(v) => onChange({ country: v, state: "", city: "" })}
-        >
+        <Select value={country} onValueChange={handleCountryChange}>
           <SelectTrigger className="h-11">
             <SelectValue placeholder="Select country" />
           </SelectTrigger>
@@ -94,7 +146,7 @@ const LocationSelector = ({
         <Label>State *</Label>
         <Select
           value={state}
-          onValueChange={(v) => onChange({ country, state: v, city: "" })}
+          onValueChange={handleStateChange}
           disabled={!country}
         >
           <SelectTrigger className="h-11">
@@ -120,11 +172,7 @@ const LocationSelector = ({
       </div>
       <div>
         <Label>City *</Label>
-        <Select
-          value={city}
-          onValueChange={(v) => onChange({ country, state, city: v })}
-          disabled={!state}
-        >
+        <Select value={city} onValueChange={handleCityChange} disabled={!state}>
           <SelectTrigger className="h-11">
             <SelectValue placeholder="Select city" />
           </SelectTrigger>
@@ -149,4 +197,5 @@ const LocationSelector = ({
     </div>
   );
 };
+
 export default LocationSelector;
