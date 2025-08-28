@@ -36,6 +36,7 @@ export function WalletConnection() {
     walletType,
   } = useContext(WalletContext);
   const { toast } = useToast();
+  console.log("Account ID:", accountId);
   const handleCopyAddress = () => {
     if (accountId) {
       navigator.clipboard.writeText(accountId);
@@ -47,9 +48,15 @@ export function WalletConnection() {
   };
   if (!accountId) {
     return (
-      <Button onClick={connectWallet} className="flex items-center gap-2">
+      <Button
+        onClick={connectWallet}
+        className="flex items-center gap-2 cursor-pointer transition-all duration-200 
+          hover:scale-105 hover:shadow-md 
+          active:scale-95 active:shadow-sm
+          focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+      >
         <Wallet className="h-4 w-4" />
-        Connect Wallet
+        <span>Connect Wallet</span>
       </Button>
     );
   }

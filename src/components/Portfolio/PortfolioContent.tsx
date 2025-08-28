@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 // import { AssetDetail } from "../components/asset-detail";
 import { useNavigate } from "react-router-dom";
+import { WalletContext } from "@/contexts/WalletContext";
+import { useContext } from "react";
 
 const portfolioData = {
   totalValue: "$45,230.50",
@@ -60,6 +62,8 @@ const holdings = [
 ];
 
 export function PortfolioContent() {
+  const { accountId } = useContext(WalletContext);
+
   const navigate = useNavigate();
 
   return (
@@ -71,9 +75,13 @@ export function PortfolioContent() {
             Track your real estate investments and earnings
           </p>
         </div>
-        <Button onClick={() => navigate("/add-asset")} variant="default">
-          + Add Asset
-        </Button>
+        {!accountId ? (
+          ""
+        ) : (
+          <Button onClick={() => navigate("/add-asset")} variant="default">
+            + Add Asset
+          </Button>
+        )}
       </div>
 
       {/* Portfolio Overview */}

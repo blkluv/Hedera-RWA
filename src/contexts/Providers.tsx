@@ -13,11 +13,6 @@ import App from "../App";
 import WalletProvider from "./WalletContext";
 import { ThemeProvider } from "./theme-context";
 
-const projectId = import.meta.env.VITE_PUBLIC_WALLET_CONNECT_PROJECT_ID;
-if (!projectId) {
-  throw new Error("Missing VITE_PUBLIC_WALLET_CONNECT_PROJECT_ID");
-}
-
 export function Providers() {
   const [config] = useState(() => getConfig());
   const [queryClient] = useState(() => new QueryClient());

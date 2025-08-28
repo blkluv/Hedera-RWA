@@ -1,6 +1,6 @@
 "use client";
 
-import React, { FC, useEffect } from "react";
+import React, { FC, useContext, useEffect } from "react";
 import { useState, useCallback, useMemo } from "react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,7 @@ import {
   publishToRegistry,
   hashFile,
 } from "@/utils/hedera-integration";
+import { WalletContext } from "@/contexts/WalletContext";
 
 const useDebounce = (value: string, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -74,6 +75,8 @@ const SUBMISSION_STEPS = [
 ];
 
 const AddAssetForm: FC = () => {
+  const { accountId } = useContext(WalletContext);
+
   const [form, setForm] = useState<AssetForm>(initialForm);
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -431,6 +434,7 @@ const AddAssetForm: FC = () => {
           createdAt: new Date().toISOString(),
         };
 
+        if (!accountId) return;
         // Step 3: Upload metadata to IPFS
         const metadataCID = await uploadJSONToIPFS(metadata);
         setCompletedSubmissionSteps((prev) => [...prev, 1]); // Mark metadata creation step complete
@@ -441,8 +445,8 @@ const AddAssetForm: FC = () => {
           symbol: form.tokenSymbol,
           decimals: Number(form.decimals),
           initialSupply: supplyValue,
-          adminKey,
-          supplyKey,
+          adminKey: accountId,
+          supplyKey: accountId,
           supplyType: form.supplyType === "infinite" ? "INFINITE" : "FINITE",
           maxSupply: form.supplyType === "finite" ? supplyValue : null,
         });

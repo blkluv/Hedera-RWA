@@ -164,37 +164,46 @@ const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Sync EVM wallet state
+  // Handle wallet state and validate Hedera account
   useEffect(() => {
-    const fetchHederaAccountId = async (evmAddr: string) => {
-      try {
-        // Use mainnet or testnet as needed
-        // const network = "mainnet";
-        // const baseUrl =
-        //   network === "mainnet"
-        //     ? "https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/"
-        //     : "https://testnet.mirrornode.hedera.com/api/v1/accounts/";
-        const baseUrl =
-          "https://testnet.mirrornode.hedera.com/api/v1/accounts/";
-        const res = await fetch(`${baseUrl}${evmAddr}`);
-        const data = await res.json();
-        if (data.account) {
-          setAccountId(data.account);
-        } else {
+    const validateHederaAccount = async (address: string) => {
+      // Validate Hedera account ID format (0.0.xxx)
+      const isHederaFormat = /^\d+\.\d+\.\d+$/.test(address);
+
+      if (!isHederaFormat) {
+        console.log("Not a valid Hedera account format");
+        setAccountId(null);
+        try {
+          // Verify the account exists on the network
+          const baseUrl =
+            "https://testnet.mirrornode.hedera.com/api/v1/accounts/";
+          const res = await fetch(`${baseUrl}${address}`);
+          if (!res.ok) {
+            console.log("Account not found on Hedera network");
+            setAccountId(null);
+            return;
+          }
+
+          const data = await res.json();
+          if (data.account) {
+            console.log("Valid Hedera account confirmed: ", data.account);
+            setAccountId(data.account);
+          } else {
+            console.log("Invalid account data received");
+            setAccountId(null);
+          }
+        } catch (e) {
+          console.error("Error validating Hedera account:", e);
           setAccountId(null);
         }
-      } catch (e) {
-        setAccountId(null);
       }
     };
-    if (isEvmConnected && evmAddress) {
-      fetchHederaAccountId(evmAddress);
-      setWalletType("evm");
-    } else if (walletType === "evm") {
-      setAccountId(null);
-      setWalletType(null);
+
+    // When account changes, validate it
+    if (accountId) {
+      validateHederaAccount(accountId);
     }
-  }, [isEvmConnected, evmAddress]);
+  }, [accountId]);
 
   useEffect(() => {
     const getUserProfile = async () => {
