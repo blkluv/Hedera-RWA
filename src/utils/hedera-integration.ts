@@ -5,6 +5,9 @@ import {
   PrivateKey,
   AccountId,
   TopicCreateTransaction,
+  TokenCreateTransaction,
+  TokenType,
+  TokenSupplyType,
 } from "@hashgraph/sdk";
 import { getEnv } from "@/utils";
 
@@ -12,19 +15,127 @@ import { getEnv } from "@/utils";
 // These are stubs to be filled with real logic and API keys as needed
 
 // --- IPFS ---
-export async function uploadToIPFS(file: File): Promise<string> {
+export async function uploadFileToIPFS(file: File): Promise<string> {
   // TODO: Integrate with IPFS pinning service (e.g., Pinata, web3.storage)
+  const url = "https://api.pinata.cloud/pinning/pinFileToIPFS";
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getEnv("VITE_PUBLIC_PINATA_JWT")}`,
+    },
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Failed to upload file to IPFS");
+  const data = await res.json();
   // Return the IPFS hash (CID)
-  return "ipfs://mockedCID";
+  return data.IpfsHash;
 }
-
+// Helper: Upload metadata (JSON) to IPFS via Pinata
+export async function uploadJSONToIPFS(json: any): Promise<string> {
+  const url = "https://api.pinata.cloud/pinning/pinJSONToIPFS";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getEnv("VITE_PUBLIC_PINATA_JWT")}`,
+    },
+    body: JSON.stringify(json),
+  });
+  if (!res.ok) throw new Error("Failed to upload metadata to IPFS");
+  const data = await res.json();
+  return data.IpfsHash;
+}
 // --- Hedera Token Service (HTS) ---
-export async function createHederaToken(assetMeta: any): Promise<string> {
-  // TODO: Use Hedera SDK to create a fungible token for the asset
-  // Return the token ID
-  return "0.0.mockedTokenId";
-}
+export async function createHederaToken({
+  name,
+  symbol,
+  decimals,
+  initialSupply,
+  supplyType,
+  maxSupply,
+  adminKey, // Connected wallet's public key for admin
+  supplyKey, // Connected wallet's public key for supply management
+}: {
+  name: string;
+  symbol: string;
+  decimals: number;
+  initialSupply: number;
+  supplyType: "INFINITE" | "FINITE";
+  maxSupply?: number | null;
+  adminKey: string;
+  supplyKey: string;
+}): Promise<string> {
+  try {
+    // Load credentials from env
+    const treasuryId = AccountId.fromString(
+      getEnv("VITE_PUBLIC_TREASURY_ACCOUNT_ID")
+    );
+    const treasuryKey = PrivateKey.fromStringED25519(
+      getEnv("VITE_PUBLIC_ENCODED_PRIVATE_KEY")
+    );
+    const client = Client.forTestnet().setOperator(treasuryId, treasuryKey);
 
+    // Convert adminKey and supplyKey strings to PublicKey objects
+    const adminPublicKey = PrivateKey.fromString(adminKey).publicKey;
+    const supplyPublicKey = PrivateKey.fromString(supplyKey).publicKey;
+
+    // Create the token create transaction
+    let tokenCreateTx = await new TokenCreateTransaction()
+      .setTokenName(name)
+      .setTokenSymbol(symbol)
+      .setTokenType(TokenType.FungibleCommon)
+      .setDecimals(decimals)
+      .setInitialSupply(initialSupply)
+      .setTreasuryAccountId(treasuryId)
+      .setAdminKey(adminPublicKey)
+      .setSupplyKey(supplyPublicKey)
+      .setSupplyType(
+        supplyType === "INFINITE"
+          ? TokenSupplyType.Infinite
+          : TokenSupplyType.Finite
+      );
+
+    // If supply type is finite, set the max supply
+    if (supplyType === "FINITE" && maxSupply) {
+      tokenCreateTx.setMaxSupply(maxSupply);
+    }
+
+    // Freeze the transaction for signing
+    const frozenTx = await tokenCreateTx.freezeWith(client);
+
+    // Sign the transaction with the treasury key
+    const signedTx = await frozenTx.sign(treasuryKey);
+
+    // Submit the transaction
+    const tokenCreateSubmit = await signedTx.execute(client);
+
+    // Get the transaction receipt
+    const tokenCreateRx = await tokenCreateSubmit.getReceipt(client);
+
+    // Get the token ID
+    const tokenId = tokenCreateRx.tokenId;
+
+    if (!tokenId) {
+      throw new Error("Token creation failed: No token ID returned");
+    }
+
+    console.log(`✅ Created token with ID: ${tokenId.toString()}`);
+    return tokenId.toString();
+  } catch (error: any) {
+    console.error("❌ Error creating Hedera token:", error);
+    throw new Error(`Failed to create token: ${error.message}`);
+  }
+}
+// Helper: Hash a file (SHA-256)
+export async function hashFile(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 // --- Hedera Consensus Service (HCS) ---
 export async function sendHcsMessage(
   topicId: string,
@@ -79,11 +190,11 @@ export async function publishToRegistry(tokenId: string, metadataCID: string) {
     metadataCID,
     timestamp: new Date().toISOString(),
   });
-
+  console.log("Messsge: ", message);
   // Publish message to topic
   const submitMsgTx = await new TopicMessageSubmitTransaction({
     topicId,
-    message: Buffer.from(message),
+    message,
   }).execute(client);
   const receipt = await submitMsgTx.getReceipt(client);
   console.log(

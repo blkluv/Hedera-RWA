@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { FC, useEffect } from "react";
 import { useState, useCallback, useMemo } from "react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -39,11 +39,20 @@ import FileUploader from "./FileUploader";
 import { SectionHeader, StepIndicator } from "./FromContent";
 import LocationSelector from "./LocationSelector";
 import AssetValueSupply from "./AssetValueSupply";
+import {
+  uploadFileToIPFS,
+  uploadJSONToIPFS,
+  createHederaToken,
+  sendHcsMessage,
+  createTopic,
+  publishToRegistry,
+  hashFile,
+} from "@/utils/hedera-integration";
 
 const useDebounce = (value: string, delay: number) => {
-  const [debouncedValue, setDebouncedValue] = React.useState(value);
+  const [debouncedValue, setDebouncedValue] = useState(value);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedValue(value);
     }, delay);
@@ -56,11 +65,22 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
-const AddAssetForm: React.FC = () => {
+const SUBMISSION_STEPS = [
+  "Uploading Files to IPFS",
+  "Creating Asset Metadata",
+  "Creating Hedera Token",
+  "Publishing to Registry",
+  "Anchoring Document Hashes",
+];
+
+const AddAssetForm: FC = () => {
   const [form, setForm] = useState<AssetForm>(initialForm);
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [completedSubmissionSteps, setCompletedSubmissionSteps] = useState<
+    number[]
+  >([]);
 
   // Asset value supply state
   const [assetValueBase, setAssetValueBase] = useState("");
@@ -133,14 +153,16 @@ const AddAssetForm: React.FC = () => {
       // Batch state updates to prevent multiple re-renders
       setForm((prev) => ({ ...prev, [name]: value }));
 
-      // Clear error only if it exists to avoid unnecessary state updates
-      setErrors((prev) => {
-        if (prev[name]) {
-          const { [name]: removed, ...rest } = prev;
-          return rest;
-        }
-        return prev;
-      });
+      // Clear error when a value is entered
+      if (value.trim()) {
+        setErrors((prev) => {
+          if (prev[name]) {
+            const { [name]: removed, ...rest } = prev;
+            return rest;
+          }
+          return prev;
+        });
+      }
     },
     []
   );
@@ -148,6 +170,17 @@ const AddAssetForm: React.FC = () => {
   const handleSelectChange = useCallback(
     (name: keyof AssetForm, value: string) => {
       setForm((prev) => ({ ...prev, [name]: value }));
+
+      // Clear error when a value is selected
+      if (value) {
+        setErrors((prev) => {
+          if (prev[name]) {
+            const { [name]: removed, ...rest } = prev;
+            return rest;
+          }
+          return prev;
+        });
+      }
     },
     []
   );
@@ -210,9 +243,49 @@ const AddAssetForm: React.FC = () => {
   const handleLocationChange = useCallback(
     (location: { country: string; state: string; city: string }) => {
       setForm((prev) => ({ ...prev, geolocation: location }));
+
+      // Clear location-related errors when fields are filled
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        if (location.country && newErrors.country) delete newErrors.country;
+        if (location.state && newErrors.state) delete newErrors.state;
+        if (location.city && newErrors.city) delete newErrors.city;
+        return newErrors;
+      });
     },
     []
   );
+
+  // Handler for asset value and supply fields
+  const handleAssetValueChange = useCallback((value: string) => {
+    setAssetValueBase(value);
+    if (value) {
+      setErrors((prev) => {
+        const { assetValueBase, ...rest } = prev;
+        return rest;
+      });
+    }
+  }, []);
+
+  const handleSupplyBaseChange = useCallback((value: string) => {
+    setSupplyBase(value);
+    if (value) {
+      setErrors((prev) => {
+        const { supplyBase, ...rest } = prev;
+        return rest;
+      });
+    }
+  }, []);
+
+  const handleProjectedIncomeChange = useCallback((value: string) => {
+    setProjectedIncome(value);
+    if (value) {
+      setErrors((prev) => {
+        const { projectedIncome, ...rest } = prev;
+        return rest;
+      });
+    }
+  }, []);
 
   // Validate current step
   const validateStep = useCallback(
@@ -249,32 +322,157 @@ const AddAssetForm: React.FC = () => {
       if (!validateStep(step)) return;
 
       setLoading(true);
+      setCompletedSubmissionSteps([]);
       try {
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Step 1: Upload files to IPFS and hash them
+        const fileUploads = [];
 
-        console.log("Form submitted:", {
-          ...form,
-          assetValueBase,
-          assetValueMultiplier,
-          supplyBase,
-          supplyMultiplier,
-          projectedIncome,
-          annualIncome,
-          pricePerTokenUSD,
-          dividendYield,
-          payoutFrequency,
-          nextPayout,
+        // Upload primary image
+        if (form.primaryImage) {
+          fileUploads.push(
+            uploadFileToIPFS(form.primaryImage).then((cid) => ({
+              type: "primaryImage",
+              cid,
+              hash: hashFile(form.primaryImage!),
+            }))
+          );
+        }
+        // Upload additional images
+        if (form.additionalImages.length > 0) {
+          form.additionalImages.forEach((file) => {
+            fileUploads.push(
+              uploadFileToIPFS(file).then((cid) => ({
+                type: "additionalImage",
+                cid,
+                hash: hashFile(file),
+              }))
+            );
+          });
+        }
+
+        // Upload legal documents
+        if (form.legalDocs) {
+          fileUploads.push(
+            uploadFileToIPFS(form.legalDocs).then((cid) => ({
+              type: "legalDocs",
+              cid,
+              hash: hashFile(form.legalDocs!),
+            }))
+          );
+        }
+
+        // Upload valuation report
+        if (form.valuationReport) {
+          fileUploads.push(
+            uploadFileToIPFS(form.valuationReport).then((cid) => ({
+              type: "valuationReport",
+              cid,
+              hash: hashFile(form.valuationReport!),
+            }))
+          );
+        }
+
+        // Wait for all file uploads and hashing to complete
+        const uploadResults = await Promise.all(fileUploads);
+
+        // Organize upload results
+        type FileData = {
+          primaryImage?: { cid: string; hash: Promise<string> | string };
+          additionalImages?: { cid: string; hash: Promise<string> | string }[];
+          legalDocs?: { cid: string; hash: Promise<string> | string };
+          valuationReport?: { cid: string; hash: Promise<string> | string };
+        };
+
+        const fileData = uploadResults.reduce<FileData>((acc, result) => {
+          if (result.type === "primaryImage") {
+            acc.primaryImage = { cid: result.cid, hash: result.hash };
+          } else if (result.type === "additionalImage") {
+            if (!acc.additionalImages) acc.additionalImages = [];
+            acc.additionalImages.push({ cid: result.cid, hash: result.hash });
+          } else if (result.type === "legalDocs") {
+            acc.legalDocs = { cid: result.cid, hash: result.hash };
+          } else if (result.type === "valuationReport") {
+            acc.valuationReport = { cid: result.cid, hash: result.hash };
+          }
+          return acc;
+        }, {});
+        // Step 2: Create metadata object
+        const assetValue = Number(assetValueBase.replace(/,/g, ""));
+        const supplyValue = Number(supplyBase.replace(/,/g, ""));
+        const metadata = {
+          name: form.assetName,
+          description: form.assetDescription,
+          category: form.category,
+          location: form.geolocation,
+          files: fileData,
+          tokenomics: {
+            assetValue: assetValue,
+            tokenSupply: supplyValue,
+            projectedIncome: Number(projectedIncome),
+            annualIncome: Number(annualIncome),
+            pricePerTokenUSD: Number(pricePerTokenUSD),
+            dividendYield: Number(dividendYield),
+            payoutFrequency,
+            nextPayout,
+          },
+          tokenConfig: {
+            name: form.tokenName,
+            symbol: form.tokenSymbol,
+            decimals: Number(form.decimals),
+            treasuryAccount: form.treasuryAccount,
+            supplyType: form.supplyType,
+            kycKey: form.kycKey || undefined,
+            freezeKey: form.freezeKey || undefined,
+          },
+          additionalInfo: {
+            insuranceDetails: form.insuranceDetails,
+            specialRights: form.specialRights,
+          },
+          createdAt: new Date().toISOString(),
+        };
+
+        // Step 3: Upload metadata to IPFS
+        const metadataCID = await uploadJSONToIPFS(metadata);
+        setCompletedSubmissionSteps((prev) => [...prev, 1]); // Mark metadata creation step complete
+        console.log("Meta CID: ", metadataCID);
+        // Step 4: Create Hedera token
+        const tokenId = await createHederaToken({
+          name: form.tokenName,
+          symbol: form.tokenSymbol,
+          decimals: Number(form.decimals),
+          initialSupply: supplyValue,
+          adminKey,
+          supplyKey,
+          supplyType: form.supplyType === "infinite" ? "INFINITE" : "FINITE",
+          maxSupply: form.supplyType === "finite" ? supplyValue : null,
         });
+        console.log("Token Id: ", tokenId);
+
+        // Step 6: Publish to Registry
+        await publishToRegistry(tokenId, metadataCID);
+        setCompletedSubmissionSteps((prev) => [...prev, 2]); // Mark token creation step complete
+        setCompletedSubmissionSteps((prev) => [...prev, 3]); // Mark registry publishing step complete
+        // Step 7: Send message to HCS topic with file hashes
+        await sendHcsMessage(form.hcsTopicId, {
+          type: "ASSET_CREATED",
+          tokenId,
+          metadataCID,
+          fileHashes: fileData,
+          timestamp: new Date().toISOString(),
+        });
+
+        setCompletedSubmissionSteps((prev) => [...prev, 4]); // Mark document hash anchoring step complete
 
         alert("Asset created successfully!");
 
         // Reset form
         setForm(initialForm);
         setStep(0);
-      } catch (error) {
-        console.error("Submission error:", error);
-        alert("Failed to create asset. Please try again.");
+      } catch (error: any) {
+        console.error("Submission error:", error.message);
+        alert(
+          "Failed to create asset: " + (error.message || "Please try again.")
+        );
       } finally {
         setLoading(false);
       }
@@ -498,15 +696,15 @@ const AddAssetForm: React.FC = () => {
               <CardContent className="space-y-6">
                 <AssetValueSupply
                   assetValueBase={assetValueBase}
-                  setAssetValueBase={setAssetValueBase}
+                  setAssetValueBase={handleAssetValueChange}
                   assetValueMultiplier={assetValueMultiplier}
                   setAssetValueMultiplier={setAssetValueMultiplier}
                   supplyBase={supplyBase}
-                  setSupplyBase={setSupplyBase}
+                  setSupplyBase={handleSupplyBaseChange}
                   supplyMultiplier={supplyMultiplier}
                   setSupplyMultiplier={setSupplyMultiplier}
                   projectedIncome={projectedIncome}
-                  setProjectedIncome={setProjectedIncome}
+                  setProjectedIncome={handleProjectedIncomeChange}
                   annualIncome={annualIncome}
                   setAnnualIncome={setAnnualIncome}
                   pricePerTokenUSD={pricePerTokenUSD}
@@ -775,6 +973,48 @@ const AddAssetForm: React.FC = () => {
               </Button>
             )}
           </div>
+
+          {/* Submission Progress */}
+          {loading && (
+            <div className="mt-6 space-y-3">
+              {SUBMISSION_STEPS.map((stepText, index) => (
+                <div key={index} className="flex items-center space-x-3">
+                  <div
+                    className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                      completedSubmissionSteps.includes(index)
+                        ? "bg-green-500"
+                        : "bg-gray-200"
+                    }`}
+                  >
+                    {completedSubmissionSteps.includes(index) && (
+                      <svg
+                        className="w-3 h-3 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    )}
+                  </div>
+                  <span
+                    className={`text-sm ${
+                      completedSubmissionSteps.includes(index)
+                        ? "text-green-500"
+                        : "text-gray-500"
+                    }`}
+                  >
+                    {stepText}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </form>
       </CardContent>
     </Card>
