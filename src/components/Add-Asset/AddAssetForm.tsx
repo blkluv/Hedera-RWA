@@ -1,6 +1,6 @@
 "use client";
 
-import React, { FC, useContext, useEffect } from "react";
+import React, { type FC, useContext, useEffect } from "react";
 import { useState, useCallback, useMemo } from "react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -44,7 +44,6 @@ import {
   uploadJSONToIPFS,
   createHederaToken,
   sendHcsMessage,
-  createTopic,
   publishToRegistry,
   hashFile,
 } from "@/utils/hedera-integration";
@@ -84,6 +83,9 @@ const AddAssetForm: FC = () => {
   const [completedSubmissionSteps, setCompletedSubmissionSteps] = useState<
     number[]
   >([]);
+  const [currentSubmissionStep, setCurrentSubmissionStep] =
+    useState<number>(-1);
+  const [showStepComplete, setShowStepComplete] = useState<boolean>(false);
 
   // Asset value supply state
   const [assetValueBase, setAssetValueBase] = useState("");
@@ -319,13 +321,39 @@ const AddAssetForm: FC = () => {
     setStep((s) => Math.max(s - 1, 0));
   }, []);
 
+  // Helper function to handle step progression
+  const progressToNextStep = (stepIndex: number) => {
+    setCurrentSubmissionStep(stepIndex);
+    setShowStepComplete(false);
+
+    // Simulate step completion after some time
+    setTimeout(() => {
+      setShowStepComplete(true);
+      setCompletedSubmissionSteps((prev) => [...prev, stepIndex]);
+
+      // Hide completed step after 1 second and move to next
+      setTimeout(() => {
+        if (stepIndex < SUBMISSION_STEPS.length - 1) {
+          progressToNextStep(stepIndex + 1);
+        } else {
+          // All steps completed
+          setCurrentSubmissionStep(-1);
+          setShowStepComplete(false);
+        }
+      }, 1000);
+    }, 2000); // Adjust timing as needed for your actual submission process
+  };
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!validateStep(step)) return;
 
       setLoading(true);
+      setCurrentSubmissionStep(0);
       setCompletedSubmissionSteps([]);
+      progressToNextStep(0);
+
       try {
         // Step 1: Upload files to IPFS and hash them
         const fileUploads = [];
@@ -399,6 +427,10 @@ const AddAssetForm: FC = () => {
           }
           return acc;
         }, {});
+        setCompletedSubmissionSteps((prev) => [...prev, 0]); // Mark file upload step complete
+        setCurrentSubmissionStep(1);
+        setShowStepComplete(true);
+
         // Step 2: Create metadata object
         const assetValue = Number(assetValueBase.replace(/,/g, ""));
         const supplyValue = Number(supplyBase.replace(/,/g, ""));
@@ -438,6 +470,8 @@ const AddAssetForm: FC = () => {
         // Step 3: Upload metadata to IPFS
         const metadataCID = await uploadJSONToIPFS(metadata);
         setCompletedSubmissionSteps((prev) => [...prev, 1]); // Mark metadata creation step complete
+        setCurrentSubmissionStep(2);
+        setShowStepComplete(true);
         console.log("Meta CID: ", metadataCID);
         // Step 4: Create Hedera token
         const tokenId = await createHederaToken({
@@ -452,10 +486,16 @@ const AddAssetForm: FC = () => {
         });
         console.log("Token Id: ", tokenId);
 
+        setCompletedSubmissionSteps((prev) => [...prev, 2]); // Mark token creation step complete
+        setCurrentSubmissionStep(3);
+        setShowStepComplete(true);
+
         // Step 6: Publish to Registry
         await publishToRegistry(tokenId, metadataCID);
-        setCompletedSubmissionSteps((prev) => [...prev, 2]); // Mark token creation step complete
         setCompletedSubmissionSteps((prev) => [...prev, 3]); // Mark registry publishing step complete
+        setCurrentSubmissionStep(4);
+        setShowStepComplete(true);
+
         // Step 7: Send message to HCS topic with file hashes
         await sendHcsMessage(form.hcsTopicId, {
           type: "ASSET_CREATED",
@@ -466,6 +506,8 @@ const AddAssetForm: FC = () => {
         });
 
         setCompletedSubmissionSteps((prev) => [...prev, 4]); // Mark document hash anchoring step complete
+        setCurrentSubmissionStep(-1);
+        setShowStepComplete(false);
 
         alert("Asset created successfully!");
 
@@ -979,20 +1021,15 @@ const AddAssetForm: FC = () => {
           </div>
 
           {/* Submission Progress */}
-          {loading && (
-            <div className="mt-6 space-y-3">
-              {SUBMISSION_STEPS.map((stepText, index) => (
-                <div key={index} className="flex items-center space-x-3">
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                      completedSubmissionSteps.includes(index)
-                        ? "bg-green-500"
-                        : "bg-gray-200"
-                    }`}
-                  >
-                    {completedSubmissionSteps.includes(index) && (
+          {loading &&
+            currentSubmissionStep >= 0 &&
+            currentSubmissionStep < SUBMISSION_STEPS.length && (
+              <div className="mt-4 flex items-center justify-center">
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 flex items-center justify-center">
+                    {showStepComplete ? (
                       <svg
-                        className="w-3 h-3 text-white"
+                        className="w-4 h-4 text-green-500"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -1004,21 +1041,16 @@ const AddAssetForm: FC = () => {
                           d="M5 13l4 4L19 7"
                         />
                       </svg>
+                    ) : (
+                      <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
                     )}
                   </div>
-                  <span
-                    className={`text-sm ${
-                      completedSubmissionSteps.includes(index)
-                        ? "text-green-500"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {stepText}
+                  <span className="text-xs text-gray-600">
+                    {SUBMISSION_STEPS[currentSubmissionStep]}
                   </span>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            )}
         </form>
       </CardContent>
     </Card>

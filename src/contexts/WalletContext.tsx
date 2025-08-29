@@ -45,7 +45,7 @@ const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [pairingString, setPairingString] = useState("");
 
   // RainbowKit (wagmi) hooks for EVM
-  const { address: evmAddress, isConnected: isEvmConnected } = useAccount();
+  const { isConnected: isEvmConnected } = useAccount();
   const { connectAsync, connectors } = useConnect();
   const { disconnectAsync: evmDisconnect } = useDisconnect();
 

@@ -146,32 +146,7 @@ export async function sendHcsMessage(
   return "mockedHcsMessageId";
 }
 
-// --- Mirror Node ---
-export async function fetchAssetDataFromMirrorNode(
-  tokenId: string
-): Promise<any> {
-  // TODO: Query Hedera Mirror Node REST API for token info, supply, transactions
-  return {
-    price: "$250",
-    totalSupply: 10000,
-    circulatingSupply: 3247,
-    holders: 120,
-  };
-}
-
-// --- Asset Metadata ---
-export async function fetchAssetMetadataFromIPFS(cid: string): Promise<any> {
-  // TODO: Fetch and parse asset metadata JSON from IPFS
-  return {
-    name: "Sample Asset",
-    description: "A sample real estate asset.",
-    image: "/placeholder.svg",
-    legalDocs: ["/sample-doc.pdf"],
-  };
-}
-
 // Helper: Publish to Registry (stub)
-
 export async function publishToRegistry(tokenId: string, metadataCID: string) {
   // Load credentials from env
   const operatorId = AccountId.fromString(
@@ -226,4 +201,28 @@ export async function createTopic() {
   const topicId = receipt.topicId.toString();
   console.log("New Topic ID:", topicId);
   return topicId;
+}
+
+// --- Mirror Node ---
+export async function fetchAssetDataFromMirrorNode(
+  tokenId: string
+): Promise<any> {
+  // TODO: Query Hedera Mirror Node REST API for token info, supply, transactions
+  return {
+    price: "$250",
+    totalSupply: 10000,
+    circulatingSupply: 3247,
+    holders: 120,
+  };
+}
+
+// --- Asset Metadata ---
+export async function fetchAssetMetadataFromIPFS(cid: string): Promise<any> {
+  // TODO: Fetch and parse asset metadata JSON from IPFS
+  return {
+    name: "Sample Asset",
+    description: "A sample real estate asset.",
+    image: "/placeholder.svg",
+    legalDocs: ["/sample-doc.pdf"],
+  };
 }
