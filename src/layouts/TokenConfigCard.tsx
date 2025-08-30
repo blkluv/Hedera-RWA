@@ -18,10 +18,6 @@ interface TokenConfigCardProps {
   handleSelectChange: (name: string, value: string) => void;
 }
 
-const treasuryAccount =
-  import.meta.env.VITE_PUBLIC_TREASURY_ACCOUNT_ID ||
-  process.env.VITE_PUBLIC_TREASURY_ACCOUNT_ID;
-
 // Generate a new Ed25519 keypair (for demo, should be securely generated/stored in production)
 const kycKey = PrivateKey.generate();
 console.log("KYC Public Key:", kycKey.publicKey.toString());
@@ -33,12 +29,6 @@ const TokenConfigCard: React.FC<TokenConfigCardProps> = ({
   handleSelectChange,
 }) => {
   useEffect(() => {
-    // Set treasury account from env if not already set
-    if (!form.treasuryAccount && treasuryAccount) {
-      handleChange({
-        target: { name: "treasuryAccount", value: treasuryAccount },
-      } as any);
-    }
     // Set KYC key if not already set
     if (!form.kycKey && kycKey) {
       handleChange({
@@ -109,21 +99,6 @@ const TokenConfigCard: React.FC<TokenConfigCardProps> = ({
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <Label htmlFor="treasuryAccount" className="text-sm font-medium">
-              Treasury Account *
-            </Label>
-            <Input
-              id="treasuryAccount"
-              name="treasuryAccount"
-              value={form.treasuryAccount}
-              readOnly
-              onChange={handleChange}
-              placeholder="0.0.123456"
-              className="h-11"
-              required
-            />
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="supplyType" className="text-sm font-medium">
               Supply Type *
             </Label>
@@ -141,7 +116,7 @@ const TokenConfigCard: React.FC<TokenConfigCardProps> = ({
             </Select>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="kycKey" className="text-sm font-medium">
               KYC Key
@@ -168,21 +143,6 @@ const TokenConfigCard: React.FC<TokenConfigCardProps> = ({
               onChange={handleChange}
               placeholder="Optional freeze key"
               className="h-11"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="hcsTopicId" className="text-sm font-medium">
-              HCS Topic ID *
-            </Label>
-            <Input
-              id="hcsTopicId"
-              name="hcsTopicId"
-              value={form.hcsTopicId}
-              readOnly
-              onChange={handleChange}
-              placeholder="0.0.789012"
-              className="h-11"
-              required
             />
           </div>
         </div>

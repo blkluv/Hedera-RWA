@@ -1,5 +1,5 @@
 import { Coins, FileText, ImageIcon, Settings } from "lucide-react";
-import { getEnv } from "@/utils";
+// Categories data
 
 // Constants
 export const imageExtensions = [".png", ".jpg", ".jpeg"];
@@ -61,11 +61,9 @@ export const initialForm: AssetForm = {
   tokenName: "",
   tokenSymbol: "",
   decimals: "2",
-  treasuryAccount: getEnv("VITE_PUBLIC_TREASURY_ACCOUNT_ID") || "",
   supplyType: "finite",
   kycKey: "",
   freezeKey: "",
-  hcsTopicId: getEnv("VITE_PUBLIC_HEDERA_ASSET_TOPIC") || "",
   geolocation: { country: "", state: "", city: "" },
   valuationReport: null,
   insuranceDetails: "",
@@ -89,11 +87,9 @@ export interface AssetForm {
   tokenName: string;
   tokenSymbol: string;
   decimals: string;
-  treasuryAccount: string;
   supplyType: "finite" | "infinite";
   kycKey: string;
   freezeKey: string;
-  hcsTopicId: string;
   geolocation: { country: string; state: string; city: string };
   valuationReport: File | null;
   insuranceDetails: string;
@@ -121,4 +117,8 @@ export interface AssetValueSupplyProps {
   setPayoutFrequency: (v: string) => void;
   nextPayout: string;
   setNextPayout: (v: string) => void;
+  initialSupplyPercentage: string;
+  setInitialSupplyPercentage: (v: string) => void;
+  customInitialSupplyPercentage: string;
+  setCustomInitialSupplyPercentage: (v: string) => void;
 }

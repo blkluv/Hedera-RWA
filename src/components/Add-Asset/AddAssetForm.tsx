@@ -48,6 +48,7 @@ import {
   hashFile,
 } from "@/utils/hedera-integration";
 import { WalletContext } from "@/contexts/WalletContext";
+import { getEnv } from "@/utils";
 
 const useDebounce = (value: string, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -100,6 +101,9 @@ const AddAssetForm: FC = () => {
     PAYOUT_OPTIONS[0].value
   );
   const [nextPayout, setNextPayout] = useState("");
+  const [initialSupplyPercentage, setInitialSupplyPercentage] = useState("10");
+  const [customInitialSupplyPercentage, setCustomInitialSupplyPercentage] =
+    useState("");
 
   const debouncedDescription = useDebounce(form.assetDescription, 500);
 
@@ -144,12 +148,10 @@ const AddAssetForm: FC = () => {
     if (!form.tokenName) newErrors.tokenName = "Token name is required";
     if (!form.tokenSymbol) newErrors.tokenSymbol = "Token symbol is required";
     if (!form.decimals) newErrors.decimals = "Decimals is required";
-    if (!form.treasuryAccount)
-      newErrors.treasuryAccount = "Treasury account is required";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [form.tokenName, form.tokenSymbol, form.decimals, form.treasuryAccount]);
+  }, [form.tokenName, form.tokenSymbol, form.decimals]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -454,7 +456,6 @@ const AddAssetForm: FC = () => {
             name: form.tokenName,
             symbol: form.tokenSymbol,
             decimals: Number(form.decimals),
-            treasuryAccount: form.treasuryAccount,
             supplyType: form.supplyType,
             kycKey: form.kycKey || undefined,
             freezeKey: form.freezeKey || undefined,
@@ -478,9 +479,16 @@ const AddAssetForm: FC = () => {
           name: form.tokenName,
           symbol: form.tokenSymbol,
           decimals: Number(form.decimals),
-          initialSupply: supplyValue,
-          adminKey: accountId,
-          supplyKey: accountId,
+          initialSupply: Math.floor(
+            supplyValue *
+              (Number(
+                initialSupplyPercentage === "custom"
+                  ? customInitialSupplyPercentage
+                  : initialSupplyPercentage
+              ) /
+                100)
+          ),
+          accountId,
           supplyType: form.supplyType === "infinite" ? "INFINITE" : "FINITE",
           maxSupply: form.supplyType === "finite" ? supplyValue : null,
         });
@@ -497,7 +505,8 @@ const AddAssetForm: FC = () => {
         setShowStepComplete(true);
 
         // Step 7: Send message to HCS topic with file hashes
-        await sendHcsMessage(form.hcsTopicId, {
+        const hcsTopicId = getEnv("VITE_PUBLIC_HEDERA_ASSET_TOPIC"); // Replace with your HCS topic ID if needed
+        await sendHcsMessage(hcsTopicId, {
           type: "ASSET_CREATED",
           tokenId,
           metadataCID,
@@ -761,6 +770,12 @@ const AddAssetForm: FC = () => {
                   setPayoutFrequency={setPayoutFrequency}
                   nextPayout={nextPayout}
                   setNextPayout={setNextPayout}
+                  initialSupplyPercentage={initialSupplyPercentage}
+                  setInitialSupplyPercentage={setInitialSupplyPercentage}
+                  customInitialSupplyPercentage={customInitialSupplyPercentage}
+                  setCustomInitialSupplyPercentage={
+                    setCustomInitialSupplyPercentage
+                  }
                 />
                 {(errors.assetValueBase ||
                   errors.supplyBase ||
@@ -855,28 +870,6 @@ const AddAssetForm: FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label
-                        htmlFor="treasuryAccount"
-                        className="text-sm font-medium"
-                      >
-                        Treasury Account *
-                      </Label>
-                      <Input
-                        id="treasuryAccount"
-                        name="treasuryAccount"
-                        value={form.treasuryAccount}
-                        onChange={handleChange}
-                        placeholder="0.0.123456"
-                        className="h-11"
-                        required
-                      />
-                      {errors.treasuryAccount && (
-                        <div className="text-red-500 text-xs">
-                          {errors.treasuryAccount}
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label
                         htmlFor="supplyType"
                         className="text-sm font-medium"
                       >
@@ -925,22 +918,6 @@ const AddAssetForm: FC = () => {
                         value={form.freezeKey}
                         onChange={handleChange}
                         placeholder="Optional Freeze key"
-                        className="h-11"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="hcsTopicId"
-                        className="text-sm font-medium"
-                      >
-                        HCS Topic ID
-                      </Label>
-                      <Input
-                        id="hcsTopicId"
-                        name="hcsTopicId"
-                        value={form.hcsTopicId}
-                        onChange={handleChange}
-                        placeholder="0.0.789012"
                         className="h-11"
                       />
                     </div>

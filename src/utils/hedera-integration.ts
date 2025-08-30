@@ -8,12 +8,37 @@ import {
   TokenCreateTransaction,
   TokenType,
   TokenSupplyType,
+  AccountInfoQuery,
 } from "@hashgraph/sdk";
 import { getEnv } from "@/utils";
 
 // Utility functions for Hedera, IPFS, and Mirror Node integration
 // These are stubs to be filled with real logic and API keys as needed
+async function initializeHederaClient(): Promise<{
+  client: Client;
+  treasuryId: AccountId;
+  treasuryKey: PrivateKey;
+}> {
+  try {
+    const treasuryId = AccountId.fromString(
+      getEnv("VITE_PUBLIC_TREASURY_ACCOUNT_ID")
+    );
+    const treasuryKey = PrivateKey.fromStringED25519(
+      getEnv("VITE_PUBLIC_ENCODED_PRIVATE_KEY")
+    );
+    if (!treasuryId || !treasuryKey) {
+      throw new Error(
+        "Missing Hedera environment variables: VITE_PUBLIC_TREASURY_ACCOUNT_ID or VITE_PUBLIC_ENCODED_PRIVATE_KEY"
+      );
+    }
+    const client = Client.forTestnet().setOperator(treasuryId, treasuryKey);
 
+    return { client, treasuryId, treasuryKey };
+  } catch (error: any) {
+    console.error("Failed to initialize Hedera client:", error);
+    throw new Error(`Hedera client initialization failed: ${error.message}`);
+  }
+}
 // --- IPFS ---
 export async function uploadFileToIPFS(file: File): Promise<string> {
   // TODO: Integrate with IPFS pinning service (e.g., Pinata, web3.storage)
@@ -55,8 +80,7 @@ export async function createHederaToken({
   initialSupply,
   supplyType,
   maxSupply,
-  adminKey, // Connected wallet's public key for admin
-  supplyKey, // Connected wallet's public key for supply management
+  accountId,
 }: {
   name: string;
   symbol: string;
@@ -64,22 +88,17 @@ export async function createHederaToken({
   initialSupply: number;
   supplyType: "INFINITE" | "FINITE";
   maxSupply?: number | null;
-  adminKey: string;
-  supplyKey: string;
+
+  accountId: string;
 }): Promise<string> {
   try {
-    // Load credentials from env
-    const treasuryId = AccountId.fromString(
-      getEnv("VITE_PUBLIC_TREASURY_ACCOUNT_ID")
-    );
-    const treasuryKey = PrivateKey.fromStringED25519(
-      getEnv("VITE_PUBLIC_ENCODED_PRIVATE_KEY")
-    );
-    const client = Client.forTestnet().setOperator(treasuryId, treasuryKey);
-
-    // Convert adminKey and supplyKey strings to PublicKey objects
-    const adminPublicKey = PrivateKey.fromString(adminKey).publicKey;
-    const supplyPublicKey = PrivateKey.fromString(supplyKey).publicKey;
+    const { client, treasuryId, treasuryKey } = await initializeHederaClient();
+    // Get user's public key from their account
+    const accountInfo = await new AccountInfoQuery()
+      .setAccountId(accountId)
+      .execute(client);
+    const userPublicKey = accountInfo.key;
+    console.log("User Public Key:", userPublicKey.toString());
 
     // Create the token create transaction
     let tokenCreateTx = await new TokenCreateTransaction()
@@ -89,8 +108,8 @@ export async function createHederaToken({
       .setDecimals(decimals)
       .setInitialSupply(initialSupply)
       .setTreasuryAccountId(treasuryId)
-      .setAdminKey(adminPublicKey)
-      .setSupplyKey(supplyPublicKey)
+      .setAdminKey(userPublicKey)
+      .setSupplyKey(userPublicKey)
       .setSupplyType(
         supplyType === "INFINITE"
           ? TokenSupplyType.Infinite
@@ -140,22 +159,60 @@ export async function hashFile(file: File): Promise<string> {
 export async function sendHcsMessage(
   topicId: string,
   message: any
-): Promise<string> {
-  // TODO: Use Hedera SDK to send a message to a topic for asset registry/events
-  // Return the transaction ID or message sequence
-  return "mockedHcsMessageId";
+): Promise<{
+  messageContent: string;
+  transactionStatus: string;
+  mirrorResponse?: any;
+}> {
+  try {
+    const { client } = await initializeHederaClient();
+
+    // Convert message to string if it's not already
+    const messageString =
+      typeof message === "string" ? message : JSON.stringify(message);
+
+    // Create and execute the message submission transaction
+    const submitTx = new TopicMessageSubmitTransaction()
+      .setTopicId(TopicId.fromString(topicId))
+      .setMessage(messageString);
+
+    // Submit the transaction
+    const submitResult = await submitTx.execute(client);
+
+    // Get the receipt of the transaction
+    const receipt = await submitResult.getReceipt(client);
+
+    // Optional: Wait and check Mirror Node for the message
+    console.log("Waiting for Mirror Node to update...");
+    await new Promise((r) => setTimeout(r, 6000));
+
+    let mirrorResponse;
+    try {
+      const url = `https://testnet.mirrornode.hedera.com/api/v1/topics/${topicId}/messages`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.messages?.length) {
+        mirrorResponse = data.messages[data.messages.length - 1];
+      }
+    } catch (mirrorError) {
+      console.warn("Failed to fetch from Mirror Node:", mirrorError);
+    }
+
+    return {
+      messageContent: messageString,
+      transactionStatus: receipt.status.toString(),
+      mirrorResponse,
+    };
+  } catch (error: any) {
+    console.error("Failed to send HCS message:", error);
+    throw new Error(`Failed to send message: ${error.message}`);
+  }
 }
 
 // Helper: Publish to Registry (stub)
 export async function publishToRegistry(tokenId: string, metadataCID: string) {
   // Load credentials from env
-  const operatorId = AccountId.fromString(
-    getEnv("VITE_PUBLIC_TREASURY_ACCOUNT_ID")
-  );
-  const operatorKey = PrivateKey.fromStringED25519(
-    getEnv("VITE_PUBLIC_ENCODED_PRIVATE_KEY")
-  );
-  const client = Client.forTestnet().setOperator(operatorId, operatorKey);
+  const { client } = await initializeHederaClient();
   const topicId = TopicId.fromString(getEnv("VITE_PUBLIC_HEDERA_ASSET_TOPIC"));
 
   // Prepare message
@@ -177,21 +234,8 @@ export async function publishToRegistry(tokenId: string, metadataCID: string) {
   );
 }
 
-const treasuryAccountId = import.meta.env.VITE_PUBLIC_TREASURY_ACCOUNT_ID;
-const encodedPrivateKey = import.meta.env.VITE_PUBLIC_ENCODED_PRIVATE_KEY;
-
-if (!treasuryAccountId || !encodedPrivateKey) {
-  throw new Error(
-    "Missing Hedera environment variables: VITE_PUBLIC_TREASURY_ACCOUNT_ID or VITE_PUBLIC_ENCODED_PRIVATE_KEY"
-  );
-}
-
-const client = Client.forTestnet().setOperator(
-  treasuryAccountId,
-  encodedPrivateKey
-);
-
 export async function createTopic() {
+  const { client } = await initializeHederaClient();
   const tx = new TopicCreateTransaction().setTopicMemo("Asset Registry");
   const submit = await tx.execute(client);
   const receipt = await submit.getReceipt(client);
@@ -219,10 +263,4 @@ export async function fetchAssetDataFromMirrorNode(
 // --- Asset Metadata ---
 export async function fetchAssetMetadataFromIPFS(cid: string): Promise<any> {
   // TODO: Fetch and parse asset metadata JSON from IPFS
-  return {
-    name: "Sample Asset",
-    description: "A sample real estate asset.",
-    image: "/placeholder.svg",
-    legalDocs: ["/sample-doc.pdf"],
-  };
 }
