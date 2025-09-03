@@ -121,4 +121,5 @@ export interface AssetValueSupplyProps {
   setInitialSupplyPercentage: (v: string) => void;
   customInitialSupplyPercentage: string;
   setCustomInitialSupplyPercentage: (v: string) => void;
+  onCalculateInitialSupply?: (totalSupply: number) => void;
 }

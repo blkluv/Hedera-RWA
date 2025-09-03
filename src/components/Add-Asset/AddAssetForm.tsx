@@ -46,6 +46,7 @@ import {
   sendHcsMessage,
   publishToRegistry,
   hashFile,
+  saveMetadataCIDToDatabase,
 } from "@/utils/hedera-integration";
 import { WalletContext } from "@/contexts/WalletContext";
 import { getEnv } from "@/utils";
@@ -101,9 +102,10 @@ const AddAssetForm: FC = () => {
     PAYOUT_OPTIONS[0].value
   );
   const [nextPayout, setNextPayout] = useState("");
-  const [initialSupplyPercentage, setInitialSupplyPercentage] = useState("10");
+  const [initialSupplyPercentage, setInitialSupplyPercentage] = useState("0");
   const [customInitialSupplyPercentage, setCustomInitialSupplyPercentage] =
     useState("");
+  const [calculatedInitialSupply, setCalculatedInitialSupply] = useState(0);
 
   const debouncedDescription = useDebounce(form.assetDescription, 500);
 
@@ -465,6 +467,7 @@ const AddAssetForm: FC = () => {
             specialRights: form.specialRights,
           },
           createdAt: new Date().toISOString(),
+          owner: accountId,
         };
 
         if (!accountId) return;
@@ -479,19 +482,20 @@ const AddAssetForm: FC = () => {
           name: form.tokenName,
           symbol: form.tokenSymbol,
           decimals: Number(form.decimals),
-          initialSupply: Math.floor(
-            supplyValue *
-              (Number(
-                initialSupplyPercentage === "custom"
-                  ? customInitialSupplyPercentage
-                  : initialSupplyPercentage
-              ) /
-                100)
-          ),
+          initialSupply: calculatedInitialSupply,
+          totalSupply: supplyValue,
           accountId,
           supplyType: form.supplyType === "infinite" ? "INFINITE" : "FINITE",
           maxSupply: form.supplyType === "finite" ? supplyValue : null,
         });
+        const data = {
+          metadataCID,
+          tokenId,
+          owner: accountId,
+          created_at: new Date().toISOString(),
+        };
+        await saveMetadataCIDToDatabase(data);
+
         console.log("Token Id: ", tokenId);
 
         setCompletedSubmissionSteps((prev) => [...prev, 2]); // Mark token creation step complete
@@ -505,7 +509,7 @@ const AddAssetForm: FC = () => {
         setShowStepComplete(true);
 
         // Step 7: Send message to HCS topic with file hashes
-        const hcsTopicId = getEnv("VITE_PUBLIC_HEDERA_ASSET_TOPIC"); // Replace with your HCS topic ID if needed
+        const hcsTopicId = getEnv("VITE_PUBLIC_HEDERA_ASSET_TOPIC");
         await sendHcsMessage(hcsTopicId, {
           type: "ASSET_CREATED",
           tokenId,
@@ -776,6 +780,7 @@ const AddAssetForm: FC = () => {
                   setCustomInitialSupplyPercentage={
                     setCustomInitialSupplyPercentage
                   }
+                  onCalculateInitialSupply={setCalculatedInitialSupply}
                 />
                 {(errors.assetValueBase ||
                   errors.supplyBase ||
