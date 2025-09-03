@@ -10,7 +10,7 @@ import {
   Settings,
   TrendingUp,
   Wallet,
-  Home,
+  Store,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "../components/ui/sheet";
 import { WalletConnection } from "@/components/wallet/wallet-connection";
@@ -18,9 +18,8 @@ import { WalletConnection } from "@/components/wallet/wallet-connection";
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-
   const navigation = [
-    { name: "Marketplace", href: "/", icon: Home },
+    { name: "Marketplace", href: "/marketplace", icon: Store },
     { name: "Portfolio", href: "/portfolio", icon: Wallet },
     { name: "Trading", href: "/trading", icon: TrendingUp },
     { name: "Settings", href: "/settings", icon: Settings },

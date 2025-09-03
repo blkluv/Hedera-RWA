@@ -11,7 +11,6 @@ import {
   AccountInfoQuery,
 } from "@hashgraph/sdk";
 import { getEnv } from "@/utils";
-import { supabase } from "./supabase";
 
 // Utility functions for Hedera, IPFS, and Mirror Node integration
 // These are stubs to be filled with real logic and API keys as needed
@@ -266,43 +265,19 @@ export async function fetchAssetDataFromMirrorNode(
 
 // --- Asset Metadata ---
 export async function fetchAssetMetadataFromIPFS(cid: string): Promise<any> {
-  // TODO: Fetch and parse asset metadata JSON from IPFS
-}
+  try {
+    // Use the IPFS gateway URL to fetch the metadata
+    const gateway = "https://ipfs.io/ipfs/";
+    const response = await fetch(`${gateway}${cid}`);
 
-/**
- * Save asset metadata CID and related info to Supabase
- * @param {Object} data - { tokenId?: string, metadataCID: string, [other fields] }
- */
-export async function saveMetadataCIDToDatabase(data: {
-  metadataCID: string;
-  tokenId: string;
-  owner: string;
-  created_at: string;
-}) {
-  // Ensure the table exists before inserting
-  // await ensureAssetMetadataTable();
+    if (!response.ok) {
+      throw new Error(`Failed to fetch metadata: ${response.statusText}`);
+    }
 
-  // Insert the data
-  const { error } = await supabase.from("asset_metadata").insert([data]);
-  if (error) {
-    console.error("Failed to save metadata CID to Supabase:", error);
-    throw new Error("Failed to save metadata CID to database");
+    const metadata = await response.json();
+    return metadata;
+  } catch (error: any) {
+    console.error("Error fetching metadata from IPFS:", error);
+    throw new Error(`Failed to fetch metadata: ${error.message}`);
   }
-}
-export async function getMetadataCIDFromDatabase() {
-  // Table: asset_metadata (must exist in Supabase)
-  const { data, error } = await supabase.from("asset_metadata").select("*");
-  console.log("Fetching data....", data);
-  if (error) {
-    console.error("Failed to fetch metadata CID from Supabase:", error);
-    throw new Error("Failed to fetch metadata CID from database");
-  }
-}
-export async function fetchDataFromDatabase() {
-  const { data, error } = await supabase.from("asset_metadata").select("*");
-  if (error) {
-    console.error("Failed to fetch data from Supabase:", error);
-    throw new Error("Failed to fetch data from database");
-  }
-  return data;
 }

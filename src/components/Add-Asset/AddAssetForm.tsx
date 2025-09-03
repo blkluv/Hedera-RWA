@@ -1,6 +1,6 @@
 "use client";
 
-import React, { type FC, useContext, useEffect } from "react";
+import { ChangeEvent, type FC, FormEvent, useContext, useEffect } from "react";
 import { useState, useCallback, useMemo } from "react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,10 +46,10 @@ import {
   sendHcsMessage,
   publishToRegistry,
   hashFile,
-  saveMetadataCIDToDatabase,
 } from "@/utils/hedera-integration";
 import { WalletContext } from "@/contexts/WalletContext";
 import { getEnv } from "@/utils";
+import { saveMetadataCIDToDatabase } from "@/utils/supabase";
 
 const useDebounce = (value: string, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -82,9 +82,7 @@ const AddAssetForm: FC = () => {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [completedSubmissionSteps, setCompletedSubmissionSteps] = useState<
-    number[]
-  >([]);
+  const [, setCompletedSubmissionSteps] = useState<number[]>([]);
   const [currentSubmissionStep, setCurrentSubmissionStep] =
     useState<number>(-1);
   const [showStepComplete, setShowStepComplete] = useState<boolean>(false);
@@ -156,7 +154,7 @@ const AddAssetForm: FC = () => {
   }, [form.tokenName, form.tokenSymbol, form.decimals]);
 
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const { name, value } = e.target;
 
       // Batch state updates to prevent multiple re-renders
@@ -195,14 +193,14 @@ const AddAssetForm: FC = () => {
   );
 
   const handleDescriptionChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
       const value = e.target.value;
       setForm((prev) => ({ ...prev, assetDescription: value }));
     },
     []
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (debouncedDescription.length > 900) {
       setErrors((prev) => ({
         ...prev,
@@ -349,7 +347,7 @@ const AddAssetForm: FC = () => {
   };
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
+    async (e: FormEvent) => {
       e.preventDefault();
       if (!validateStep(step)) return;
 

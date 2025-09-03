@@ -4,12 +4,14 @@ import { PortfolioPage } from "./pages/PortfolioPage";
 import { TradingPage } from "./pages/TradingPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AddAssetPage } from "./pages/AddAssetPage";
+import Marketplace from "./pages/Marketplace";
 
 function App() {
   return (
     <div className="min-h-screen bg-background transition-colors duration-300">
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/trading" element={<TradingPage />} />
         <Route path="/settings" element={<SettingsPage />} />
