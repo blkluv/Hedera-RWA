@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { fetchAssetMetadataFromIPFS } from "@/utils/hedera-integration";
@@ -13,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import type { AssetMetadata } from "@/utils/assets";
+import { TradingPanel } from "./TradingPanel";
 
 const AssetDetails = () => {
   const { metadataCID } = useParams();
@@ -120,9 +123,9 @@ const AssetDetails = () => {
   }
 
   return (
-    <div className="container mx-auto p-4">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 space-y-6">
+    <div className="max-w-6xl mx-auto p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
           {/* Primary Image */}
           <Card className="p-4">
             {assetData.files.primaryImage && (
@@ -270,49 +273,12 @@ const AssetDetails = () => {
 
         {/* Trading Section */}
         <div className="lg:col-span-1">
-          <Card className="p-6 space-y-4 sticky top-6">
-            <h2 className="text-2xl font-bold">Trading</h2>
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium text-gray-500">
-                  Current Price
-                </h3>
-                <p className="text-2xl font-bold">
-                  ${assetData.tokenomics.pricePerTokenUSD}
-                </p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-gray-500">
-                  Available Supply
-                </h3>
-                <p className="text-lg">
-                  {assetData.tokenomics.tokenSupply.toLocaleString()} tokens
-                </p>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Amount
-                </label>
-                <input
-                  type="number"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter amount of tokens"
-                  min="1"
-                  max={assetData.tokenomics.tokenSupply}
-                />
-              </div>
-              <Button className="w-full" size="lg">
-                Buy Tokens
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full bg-transparent"
-                size="lg"
-              >
-                Sell Tokens
-              </Button>
-            </div>
-          </Card>
+          <div className="sticky top-6">
+            <TradingPanel
+              tokenomics={assetData.tokenomics}
+              tokenSymbol={assetData.tokenConfig.symbol}
+            />
+          </div>
         </div>
       </div>
 
@@ -385,9 +351,9 @@ const AssetDetails = () => {
 
 const LoadingSkeleton = () => {
   return (
-    <div className="container mx-auto p-4">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 space-y-6">
+    <div className="max-w-6xl mx-auto p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
           <Skeleton className="h-[400px] w-full" />
           <div className="space-y-4">
             <Skeleton className="h-8 w-3/4" />
