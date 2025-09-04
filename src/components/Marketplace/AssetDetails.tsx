@@ -1,8 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { fetchAssetMetadataFromIPFS } from "@/utils/hedera-integration";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileIcon,
+  ImageIcon,
+  X,
+} from "lucide-react";
 
 interface AssetMetadata {
   name: string;
@@ -60,6 +69,62 @@ const AssetDetails = () => {
   const [assetData, setAssetData] = useState<AssetMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [currentAssetIndex, setCurrentAssetIndex] = useState(0);
+
+  const assetFiles = useMemo(() => {
+    if (!assetData) return [];
+
+    const files: { type: "image" | "document"; url: string; title: string }[] =
+      [];
+
+    if (assetData.files.primaryImage) {
+      files.push({
+        type: "image",
+        url: `https://ipfs.io/ipfs/${assetData.files.primaryImage.cid}`,
+        title: "Primary Image",
+      });
+    }
+
+    if (assetData.files.additionalImages) {
+      assetData.files.additionalImages.forEach((img, index) => {
+        files.push({
+          type: "image",
+          url: `https://ipfs.io/ipfs/${img.cid}`,
+          title: `Additional Image ${index + 1}`,
+        });
+      });
+    }
+
+    if (assetData.files.legalDocs) {
+      files.push({
+        type: "document",
+        url: `https://ipfs.io/ipfs/${assetData.files.legalDocs.cid}`,
+        title: "Legal Documents",
+      });
+    }
+
+    if (assetData.files.valuationReport) {
+      files.push({
+        type: "document",
+        url: `https://ipfs.io/ipfs/${assetData.files.valuationReport.cid}`,
+        title: "Valuation Report",
+      });
+    }
+
+    return files;
+  }, [assetData]);
+  const handleNext = () => {
+    if (currentAssetIndex < assetFiles.length - 1) {
+      setCurrentAssetIndex(currentAssetIndex + 1);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentAssetIndex > 0) {
+      setCurrentAssetIndex(currentAssetIndex - 1);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -109,11 +174,29 @@ const AssetDetails = () => {
         {/* Primary Image */}
         <Card className="p-4">
           {assetData.files.primaryImage && (
-            <img
-              src={`https://ipfs.io/ipfs/${assetData.files.primaryImage.cid}`}
-              alt={assetData.name}
-              className="w-full h-[400px] object-cover rounded-lg"
-            />
+            <div
+              className="relative group cursor-pointer"
+              onClick={() => {
+                setCurrentAssetIndex(0);
+                setViewerOpen(true);
+              }}
+            >
+              <img
+                src={`https://ipfs.io/ipfs/${assetData.files.primaryImage.cid}`}
+                alt={assetData.name}
+                className="w-full h-[400px] object-cover rounded-lg select-none"
+                onContextMenu={(e) => e.preventDefault()}
+                style={{ pointerEvents: "none" }}
+              />
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <ImageIcon className="w-8 h-8 text-white" />
+              </div>
+              {assetFiles.length > 1 && (
+                <div className="absolute bottom-4 right-4 bg-black/70 text-white px-3 py-1 rounded-full text-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                  {`1 / ${assetFiles.length}`}
+                </div>
+              )}
+            </div>
           )}
         </Card>
 
@@ -169,27 +252,105 @@ const AssetDetails = () => {
             <h2 className="text-xl font-semibold">Documents</h2>
             <div className="space-y-2">
               {assetData.files.legalDocs && (
-                <a
-                  href={`https://ipfs.io/ipfs/${assetData.files.legalDocs.cid}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-blue-600 hover:underline"
+                <button
+                  onClick={() => {
+                    const index = assetFiles.findIndex(
+                      (file) => file.title === "Legal Documents"
+                    );
+                    if (index !== -1) {
+                      setCurrentAssetIndex(index);
+                      setViewerOpen(true);
+                    }
+                  }}
+                  className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors"
                 >
-                  📄 Legal Documents
-                </a>
+                  <FileIcon className="w-5 h-5" />
+                  <span>Legal Documents</span>
+                </button>
               )}
               {assetData.files.valuationReport && (
-                <a
-                  href={`https://ipfs.io/ipfs/${assetData.files.valuationReport.cid}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-blue-600 hover:underline"
+                <button
+                  onClick={() => {
+                    const index = assetFiles.findIndex(
+                      (file) => file.title === "Valuation Report"
+                    );
+                    if (index !== -1) {
+                      setCurrentAssetIndex(index);
+                      setViewerOpen(true);
+                    }
+                  }}
+                  className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors"
                 >
-                  📊 Valuation Report
-                </a>
+                  <FileIcon className="w-5 h-5" />
+                  <span>Valuation Report</span>
+                </button>
               )}
             </div>
           </div>
+
+          {/* Media Viewer Dialog */}
+          <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
+            <DialogContent className="max-w-7xl h-[90vh] p-0">
+              <div className="relative w-full h-full bg-black/95">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-4 top-4 text-white z-50"
+                  onClick={() => setViewerOpen(false)}
+                >
+                  <X className="h-6 w-6" />
+                </Button>
+
+                {assetFiles.length > 1 && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-white"
+                      onClick={handlePrevious}
+                      disabled={currentAssetIndex === 0}
+                    >
+                      <ChevronLeft className="h-8 w-8" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-white"
+                      onClick={handleNext}
+                      disabled={currentAssetIndex === assetFiles.length - 1}
+                    >
+                      <ChevronRight className="h-8 w-8" />
+                    </Button>
+                  </>
+                )}
+
+                <div className="w-full h-full flex items-center justify-center p-8">
+                  {assetFiles[currentAssetIndex]?.type === "image" ? (
+                    <img
+                      src={assetFiles[currentAssetIndex].url}
+                      alt={assetFiles[currentAssetIndex].title}
+                      className="max-w-full max-h-full object-contain select-none"
+                      onContextMenu={(e) => e.preventDefault()}
+                      style={{ pointerEvents: "none" }}
+                    />
+                  ) : (
+                    <iframe
+                      src={assetFiles[currentAssetIndex].url}
+                      title={assetFiles[currentAssetIndex].title}
+                      className="w-full h-full bg-white"
+                      sandbox="allow-same-origin allow-scripts"
+                    />
+                  )}
+                </div>
+
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full">
+                  {assetFiles[currentAssetIndex]?.title}{" "}
+                  {assetFiles.length > 1 &&
+                    `(${currentAssetIndex + 1}/${assetFiles.length})`}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Additional Information */}
           {(assetData.additionalInfo.insuranceDetails ||
